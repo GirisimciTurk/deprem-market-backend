@@ -1,0 +1,28 @@
+# Dependencies
+node_modules
+
+# Build
+.medusa
+dist
+
+# Environment
+.env
+.env.local
+!.env.example
+!.env.template
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+
+# IDE
+.idea
+.vscode
+
+# Turbo
+.turbo
+
+# Sent emails (dev)
+sent-emails
