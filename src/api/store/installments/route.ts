@@ -1,6 +1,7 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { createHash } from "crypto"
 import { installmentsLimiter } from "../../../lib/rate-limiter"
+import { getPaynkolayConfig } from "../../../lib/paynkolay-config"
 
 function getFormattedDate(): string {
   const now = new Date()
@@ -30,11 +31,10 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   logger.info(`Store Installments API: Received request to fetch Paynkolay installment options from IP: ${clientIp}`)
 
   try {
-    const sx =
-      process.env.PAYNKOLAY_SX ||
-      "118591467|bScbGDYCtPf7SS1N6PQ6/+58rFhW1WpsWINqvkJFaJlu6bMH2tgPKDQtjeA5vClpzJP24uA0vx7OX53cP3SgUspa4EvYix+1C3aXe++8glUvu9Oyyj3v300p5NP7ro/9K57Zcw=="
-    const secretKey = process.env.PAYNKOLAY_SECRET_KEY || "_YckdxUbv4vrnMUZ6VQsr"
-    
+    const cfg = getPaynkolayConfig()
+    const sx = cfg.sx
+    const secretKey = cfg.secretKey
+
     const date = getFormattedDate()
     logger.debug(`Store Installments API: Formatting date for query: ${date}`)
 
@@ -42,10 +42,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     const hashDatav2 = createHash("sha512").update(raw, "utf-8").digest("base64")
     logger.debug("Store Installments API: Hash signature successfully calculated")
 
-    const url =
-      process.env.NODE_ENV === "production"
-        ? "https://paynkolay.nkolayislem.com.tr/Vpos/Payment/GetMerchandInformation"
-        : "https://paynkolaytest.nkolayislem.com.tr/Vpos/Payment/GetMerchandInformation"
+    const url = `${cfg.baseUrl}/Payment/GetMerchandInformation`
 
     const formData = new URLSearchParams()
     formData.append("sx", sx)
