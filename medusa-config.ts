@@ -30,6 +30,24 @@ module.exports = defineConfig({
         ],
       },
     },
+    [Modules.FULFILLMENT]: {
+      resolve: "@medusajs/fulfillment",
+      options: {
+        providers: [
+          {
+            // Manuel fulfillment (mevcut veriler `manual_manual` provider'ına bağlı).
+            resolve: "@medusajs/fulfillment-manual",
+            id: "manual",
+          },
+          {
+            // Aras Kargo — provider_id: "aras_kargo" (identifier "aras" + id "kargo").
+            resolve: "./src/modules/fulfillment/providers/aras-kargo",
+            id: "kargo",
+            options: {},
+          },
+        ],
+      },
+    },
     [Modules.PAYMENT]: {
       resolve: "@medusajs/payment",
       options: {
@@ -70,6 +88,15 @@ module.exports = defineConfig({
     },
     storefrontSettings: {
       resolve: "./src/modules/storefrontSettings",
+    },
+    review: {
+      resolve: "./src/modules/review",
+    },
+    blog: {
+      resolve: "./src/modules/blog",
+    },
+    reseller: {
+      resolve: "./src/modules/reseller",
     },
   },
 })

@@ -25,16 +25,21 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       error: "Geçersiz ödeme parametreleri.",
     })
   }
-  const { clientRefCode, amount, successUrl, failUrl, rnd } = parsed.data
+  const { clientRefCode, amount, successUrl, failUrl, rnd, csCustomerKey } = parsed.data
 
   try {
     const cfg = getPaynkolayConfig()
     const sx = cfg.sx
     const secretKey = cfg.secretKey
 
-    // Raw hash calculation format: sx|clientRefCode|amount|successUrl|failUrl|rnd||merchantSecretKey
-    // Note: The customerKey parameter slot is kept empty in the signature raw string for Vpos redirect requests
-    const raw = `${sx}|${clientRefCode}|${amount}|${successUrl}|${failUrl}|${rnd}||${secretKey}`
+    // Paynkolay resmi hash formatı (04-hash-request):
+    //   sx|clientRefCode|amount|successUrl|failUrl|rnd|customerKey|merchantSecretKey
+    // Doküman: "Kart saklama hizmeti alınmıyorsa CS_CUSTOMER_KEY boş olacaktır."
+    // Kart kaydedilmiyorsa customerKey boş ("...|rnd||secret"); kaydediliyorsa veya
+    // kayıtlı kartla ödeniyorsa forma POST edilen csCustomerKey ile AYNI değer imzaya
+    // girmeli, aksi halde Paynkolay imzayı reddeder.
+    const customerKey = csCustomerKey || ""
+    const raw = `${sx}|${clientRefCode}|${amount}|${successUrl}|${failUrl}|${rnd}|${customerKey}|${secretKey}`
     const hashDataV2 = createHash("sha512").update(raw, "utf-8").digest("base64")
 
     return res.status(200).json({
