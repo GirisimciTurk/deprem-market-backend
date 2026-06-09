@@ -22,6 +22,7 @@ import {
   WebhookActionResult,
 } from "@medusajs/types"
 import { createHash } from "crypto"
+import { getPaynkolayConfig } from "../../../lib/paynkolay-config"
 
 function calculateHash(
   sx: string,
@@ -73,13 +74,14 @@ class PaynkolayProviderService extends AbstractPaymentProvider {
     const clientRefCode = (input.data?.session_id as string) || "session_pending"
     const rnd = getFormattedDate()
     
-    const sx = process.env.PAYNKOLAY_SX || "118591467|bScbGDYCtPf7SS1N6PQ6/+58rFhW1WpsWINqvkJFaJlu6bMH2tgPKDQtjeA5vClpzJP24uA0vx7OX53cP3SgUspa4EvYix+1C3aXe++8glUvu9Oyyj3v300p5NP7ro/9K57Zcw=="
-    const secretKey = process.env.PAYNKOLAY_SECRET_KEY || "_YckdxUbv4vrnMUZ6VQsr"
-    const agentCode = process.env.PAYNKOLAY_AGENT_CODE || "1236"
-    
-    const successUrl = process.env.PAYNKOLAY_SUCCESS_URL || "http://localhost:9000/paynkolay-callback"
-    const failUrl = process.env.PAYNKOLAY_FAIL_URL || "http://localhost:9000/paynkolay-callback"
-    
+    const cfg = getPaynkolayConfig()
+    const sx = cfg.sx
+    const secretKey = cfg.secretKey
+    const agentCode = cfg.agentCode
+
+    const successUrl = cfg.successUrl
+    const failUrl = cfg.failUrl
+
     const hashDataV2 = calculateHash(
       sx,
       clientRefCode,
@@ -108,9 +110,7 @@ class PaynkolayProviderService extends AbstractPaymentProvider {
         transactionType: "SALES",
         use3D: "true",
         hashDataV2,
-        actionUrl: process.env.NODE_ENV === "production"
-          ? "https://paynkolay.nkolayislem.com.tr/Vpos"
-          : "https://paynkolaytest.nkolayislem.com.tr/Vpos"
+        actionUrl: cfg.baseUrl
       }
     }
   }
@@ -170,28 +170,27 @@ class PaynkolayProviderService extends AbstractPaymentProvider {
       throw new Error("Cannot refund payment: reference_code is missing in payment data.")
     }
 
-    const cancelSx = process.env.PAYNKOLAY_CANCEL_SX || process.env.PAYNKOLAY_SX || "118591467|bScbGDYCtPf7SS1N6PQ6/+58rFhW1WpsWINqvkJFaJlu6bMH2tgPKDQtjeA5vClpzJP24uA0vx7OX53cP3SgUspa4EvYix+1C3aXe++8glUvu9Oyyj3v300p5NP7ro/9K57Zcw=="
-    const secretKey = process.env.PAYNKOLAY_SECRET_KEY || "_YckdxUbv4vrnMUZ6VQsr"
-    
+    const cfg = getPaynkolayConfig()
+    const cancelSx = cfg.cancelSx
+    const secretKey = cfg.secretKey
+
     // Amount in lira (Medusa input.amount is in cents)
     const amount = (Number(input.amount) / 100).toFixed(2)
-    
+
     // Formatted trxDate: yyyy.MM.dd
     const dateObj = input.data.created_at ? new Date(input.data.created_at as string) : new Date()
     const year = dateObj.getFullYear()
     const month = String(dateObj.getMonth() + 1).padStart(2, '0')
     const day = String(dateObj.getDate()).padStart(2, '0')
     const trxDate = `${year}.${month}.${day}`
-    
+
     const type = "refund"
-    
+
     // Signature: sx | referenceCode | type | amount | trxDate | merchantSecretKey
     const rawHash = `${cancelSx}|${referenceCode}|${type}|${amount}|${trxDate}|${secretKey}`
     const hashDatav2 = createHash("sha512").update(rawHash, "utf-8").digest("base64")
-    
-    const url = process.env.NODE_ENV === "production"
-      ? "https://paynkolay.nkolayislem.com.tr/Vpos/v1/CancelRefundPayment"
-      : "https://paynkolaytest.nkolayislem.com.tr/Vpos/v1/CancelRefundPayment"
+
+    const url = `${cfg.baseUrl}/v1/CancelRefundPayment`
 
     try {
       const formData = new URLSearchParams()
@@ -266,29 +265,28 @@ class PaynkolayProviderService extends AbstractPaymentProvider {
       throw new Error("Cannot cancel payment: reference_code is missing in payment data.")
     }
 
-    const cancelSx = process.env.PAYNKOLAY_CANCEL_SX || process.env.PAYNKOLAY_SX || "118591467|bScbGDYCtPf7SS1N6PQ6/+58rFhW1WpsWINqvkJFaJlu6bMH2tgPKDQtjeA5vClpzJP24uA0vx7OX53cP3SgUspa4EvYix+1C3aXe++8glUvu9Oyyj3v300p5NP7ro/9K57Zcw=="
-    const secretKey = process.env.PAYNKOLAY_SECRET_KEY || "_YckdxUbv4vrnMUZ6VQsr"
-    
+    const cfg = getPaynkolayConfig()
+    const cancelSx = cfg.cancelSx
+    const secretKey = cfg.secretKey
+
     // Amount in lira
     const rawAmount = input.data.received_amount || input.data.amount || 0
     const amount = typeof rawAmount === "string" ? rawAmount : (Number(rawAmount) / 100).toFixed(2)
-    
+
     // Formatted trxDate: yyyy.MM.dd
     const dateObj = input.data.created_at ? new Date(input.data.created_at as string) : new Date()
     const year = dateObj.getFullYear()
     const month = String(dateObj.getMonth() + 1).padStart(2, '0')
     const day = String(dateObj.getDate()).padStart(2, '0')
     const trxDate = `${year}.${month}.${day}`
-    
+
     const type = "cancel"
-    
+
     // Signature: sx | referenceCode | type | amount | trxDate | merchantSecretKey
     const rawHash = `${cancelSx}|${referenceCode}|${type}|${amount}|${trxDate}|${secretKey}`
     const hashDatav2 = createHash("sha512").update(rawHash, "utf-8").digest("base64")
-    
-    const url = process.env.NODE_ENV === "production"
-      ? "https://paynkolay.nkolayislem.com.tr/Vpos/v1/CancelRefundPayment"
-      : "https://paynkolaytest.nkolayislem.com.tr/Vpos/v1/CancelRefundPayment"
+
+    const url = `${cfg.baseUrl}/v1/CancelRefundPayment`
 
     try {
       const formData = new URLSearchParams()
@@ -384,12 +382,12 @@ class PaynkolayProviderService extends AbstractPaymentProvider {
     const amountInLira = (rawAmount / 100).toFixed(2)
     const rnd = getFormattedDate()
     
-    const sx = process.env.PAYNKOLAY_SX || "118591467|bScbGDYCtPf7SS1N6PQ6/+58rFhW1WpsWINqvkJFaJlu6bMH2tgPKDQtjeA5vClpzJP24uA0vx7OX53cP3SgUspa4EvYix+1C3aXe++8glUvu9Oyyj3v300p5NP7ro/9K57Zcw=="
-    const secretKey = process.env.PAYNKOLAY_SECRET_KEY || "_YckdxUbv4vrnMUZ6VQsr"
-    const agentCode = process.env.PAYNKOLAY_AGENT_CODE || "1236"
-    const successUrl = process.env.PAYNKOLAY_SUCCESS_URL || "http://localhost:9000/paynkolay-callback"
-    const failUrl = process.env.PAYNKOLAY_FAIL_URL || "http://localhost:9000/paynkolay-callback"
-    
+    const cfg = getPaynkolayConfig()
+    const sx = cfg.sx
+    const secretKey = cfg.secretKey
+    const successUrl = cfg.successUrl
+    const failUrl = cfg.failUrl
+
     const hashDataV2 = calculateHash(
       sx,
       clientRefCode,

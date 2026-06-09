@@ -12,7 +12,8 @@ export default async function orderPlacedHandler({
   container,
 }: SubscriberArgs<OrderPlacedEvent>) {
   const orderId = data.id
-  console.log(`[OrderPlacedSubscriber] Order placed event triggered for order: ${orderId}`)
+  const logger = container.resolve("logger")
+  logger.info(`[OrderPlacedSubscriber] Order placed event triggered for order: ${orderId}`)
 
   const query = container.resolve("query")
   
@@ -35,12 +36,12 @@ export default async function orderPlacedHandler({
   })
 
   if (!orders || orders.length === 0) {
-    console.error(`[OrderPlacedSubscriber] Order not found: ${orderId}`)
+    logger.error(`[OrderPlacedSubscriber] Order not found: ${orderId}`)
     return
   }
 
   const order = orders[0]
-  console.log(`[OrderPlacedSubscriber] Order details fetched. Customer email: ${order.email}`)
+  logger.info(`[OrderPlacedSubscriber] Order details fetched. Customer email: ${order.email}`)
 
   // Generate HTML Items list
   const itemsHtml = (order.items || []).map((item: any) => {
@@ -157,9 +158,9 @@ export default async function orderPlacedHandler({
     }
     const filePath = path.join(dir, `order-${order.display_id || order.id}.html`)
     fs.writeFileSync(filePath, emailHtml)
-    console.log(`[OrderPlacedSubscriber] Visual email backup successfully saved: ${filePath}`)
+    logger.info(`[OrderPlacedSubscriber] Visual email backup successfully saved: ${filePath}`)
   } catch (err: any) {
-    console.error(`[OrderPlacedSubscriber] Failed to write preview file:`, err.message)
+    logger.error(`[OrderPlacedSubscriber] Failed to write preview file: ${err.message}`)
   }
 
   // Dispatch via SMTP if configurations exist
@@ -187,12 +188,12 @@ export default async function orderPlacedHandler({
         html: emailHtml,
       })
 
-      console.log(`[OrderPlacedSubscriber] Live confirmation email sent to: ${order.email}`)
+      logger.info(`[OrderPlacedSubscriber] Live confirmation email sent to: ${order.email}`)
     } catch (sendErr: any) {
-      console.error(`[OrderPlacedSubscriber] SMTP dispatch failed:`, sendErr.message)
+      logger.error(`[OrderPlacedSubscriber] SMTP dispatch failed: ${sendErr.message}`)
     }
   } else {
-    console.log(`[OrderPlacedSubscriber] SMTP credentials not set. Saved visual preview inside: apps/backend/sent-emails/`)
+    logger.info(`[OrderPlacedSubscriber] SMTP credentials not set. Saved visual preview inside: apps/backend/sent-emails/`)
   }
 }
 

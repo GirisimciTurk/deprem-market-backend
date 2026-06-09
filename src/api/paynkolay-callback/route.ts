@@ -3,6 +3,7 @@ import { ContainerRegistrationKeys, Modules, PaymentSessionStatus } from "@medus
 import { completeCartWorkflow } from "@medusajs/medusa/core-flows"
 import { createHash } from "crypto"
 import { callbackLimiter } from "../../lib/rate-limiter"
+import { getPaynkolayConfig } from "../../lib/paynkolay-config"
 
 function calculateResponseHash(
   merchantNo: string,
@@ -131,7 +132,7 @@ export async function POST(
   }
 
   // 5. Verify response signature (hashDataV2) for successful transactions
-  const secretKey = process.env.PAYNKOLAY_SECRET_KEY || "_YckdxUbv4vrnMUZ6VQsr"
+  const secretKey = getPaynkolayConfig().secretKey
   const calculatedHash = calculateResponseHash(
     merchantNo,
     referenceCode,

@@ -60,3 +60,37 @@ export const installmentsLimiter = new InMemoryRateLimiter(15, 60000)
 
 // Paynkolay Callback: max 20 requests per 1 minute
 export const callbackLimiter = new InMemoryRateLimiter(20, 60000)
+
+// Order tracking: max 10 requests per 1 minute (guards against enumeration of
+// sequential order numbers + guessed emails)
+export const orderTrackingLimiter = new InMemoryRateLimiter(10, 60000)
+
+// Paynkolay hash signing: max 30 requests per 1 minute
+export const hashLimiter = new InMemoryRateLimiter(30, 60000)
+
+// Paynkolay saved-cards list/delete: max 20 requests per 1 minute
+export const cardsLimiter = new InMemoryRateLimiter(20, 60000)
+
+/**
+ * Shared helper: enforce a rate limit for the request's client IP. Returns true
+ * and writes a 429 response when the caller is limited; the route should then
+ * return immediately.
+ */
+export function enforceRateLimit(
+  limiter: InMemoryRateLimiter,
+  req: MedusaRequest,
+  res: MedusaResponse
+): boolean {
+  const rawIp =
+    (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "unknown_ip"
+  const clientIp = rawIp.split(",")[0].trim()
+  if (limiter.isLimited(clientIp)) {
+    res.status(429).json({
+      success: false,
+      message: "Çok fazla istek gönderildi. Lütfen biraz sonra tekrar deneyin.",
+      retryAfterSeconds: limiter.getRemainingSeconds(clientIp),
+    })
+    return true
+  }
+  return false
+}

@@ -1,28 +1,36 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { createHash } from "crypto"
+import { z } from "zod"
+import { getPaynkolayConfig } from "../../../../lib/paynkolay-config"
+import { cardsLimiter, enforceRateLimit } from "../../../../lib/rate-limiter"
+
+// customerKey may be a phone/email/TCKN; restrict to a safe charset and length.
+const customerKeySchema = z.string().trim().min(3).max(128).regex(/^[A-Za-z0-9@._+-]+$/)
+const tokenSchema = z.string().trim().min(1).max(256).regex(/^[A-Za-z0-9._-]+$/)
 
 // Endpoint to list saved cards for a customer key (phone/email/TCKN)
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
+  if (enforceRateLimit(cardsLimiter, req, res)) return
+
+  const parsedKey = customerKeySchema.safeParse(req.query.customerKey)
+  if (!parsedKey.success) {
+    return res.status(400).json({
+      success: false,
+      error: "Geçersiz müşteri anahtarı.",
+    })
+  }
+  const customerKey = parsedKey.data
+
   try {
-    const customerKey = req.query.customerKey as string
-
-    if (!customerKey) {
-      return res.status(400).json({
-        success: false,
-        error: "Missing required query parameter: customerKey is required.",
-      })
-    }
-
-    const sx = process.env.PAYNKOLAY_SX || "118591467|bScbGDYCtPf7SS1N6PQ6/+58rFhW1WpsWINqvkJFaJlu6bMH2tgPKDQtjeA5vClpzJP24uA0vx7OX53cP3SgUspa4EvYix+1C3aXe++8glUvu9Oyyj3v300p5NP7ro/9K57Zcw=="
-    const secretKey = process.env.PAYNKOLAY_SECRET_KEY || "_YckdxUbv4vrnMUZ6VQsr"
+    const cfg = getPaynkolayConfig()
+    const sx = cfg.sx
+    const secretKey = cfg.secretKey
 
     // Hash formula for listing: sx | customerKey | merchantSecretKey
     const raw = `${sx}|${customerKey}|${secretKey}`
     const hashDatav2 = createHash("sha512").update(raw, "utf-8").digest("base64")
 
-    const url = process.env.NODE_ENV === "production"
-      ? "https://paynkolay.nkolayislem.com.tr/Vpos/Payment/CardStorageCardList"
-      : "https://paynkolaytest.nkolayislem.com.tr/Vpos/Payment/CardStorageCardList"
+    const url = `${cfg.baseUrl}/Payment/CardStorageCardList`
 
     const formData = new URLSearchParams()
     formData.append("sx", sx)
@@ -54,39 +62,40 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       data: resultData,
     })
   } catch (error: any) {
-    console.error("Error listing Paynkolay saved cards:", error)
+    const logger = req.scope.resolve("logger")
+    logger.error(`Error listing Paynkolay saved cards: ${error?.message}`)
     return res.status(500).json({
       success: false,
-      error: error.message || "Failed to list saved cards",
+      error: "Kayıtlı kartlar listelenemedi.",
     })
   }
 }
 
 // Endpoint to delete a saved card by token
 export async function DELETE(req: MedusaRequest, res: MedusaResponse) {
+  if (enforceRateLimit(cardsLimiter, req, res)) return
+
+  const parsed = z
+    .object({ customerKey: customerKeySchema, token: tokenSchema })
+    .safeParse(req.body)
+  if (!parsed.success) {
+    return res.status(400).json({
+      success: false,
+      error: "Geçersiz müşteri anahtarı veya kart belirteci.",
+    })
+  }
+  const { customerKey, token } = parsed.data
+
   try {
-    const { customerKey, token } = req.body as {
-      customerKey: string
-      token: string
-    }
-
-    if (!customerKey || !token) {
-      return res.status(400).json({
-        success: false,
-        error: "Missing required body parameters: customerKey and token are required.",
-      })
-    }
-
-    const sx = process.env.PAYNKOLAY_SX || "118591467|bScbGDYCtPf7SS1N6PQ6/+58rFhW1WpsWINqvkJFaJlu6bMH2tgPKDQtjeA5vClpzJP24uA0vx7OX53cP3SgUspa4EvYix+1C3aXe++8glUvu9Oyyj3v300p5NP7ro/9K57Zcw=="
-    const secretKey = process.env.PAYNKOLAY_SECRET_KEY || "_YckdxUbv4vrnMUZ6VQsr"
+    const cfg = getPaynkolayConfig()
+    const sx = cfg.sx
+    const secretKey = cfg.secretKey
 
     // Hash formula for deletion: sx | customerKey | token | merchantSecretKey
     const raw = `${sx}|${customerKey}|${token}|${secretKey}`
     const hashDatav2 = createHash("sha512").update(raw, "utf-8").digest("base64")
 
-    const url = process.env.NODE_ENV === "production"
-      ? "https://paynkolay.nkolayislem.com.tr/Vpos/Payment/CardStorageCardDelete"
-      : "https://paynkolaytest.nkolayislem.com.tr/Vpos/Payment/CardStorageCardDelete"
+    const url = `${cfg.baseUrl}/Payment/CardStorageCardDelete`
 
     const formData = new URLSearchParams()
     formData.append("sx", sx)
@@ -119,10 +128,11 @@ export async function DELETE(req: MedusaRequest, res: MedusaResponse) {
       data: resultData,
     })
   } catch (error: any) {
-    console.error("Error deleting Paynkolay saved card:", error)
+    const logger = req.scope.resolve("logger")
+    logger.error(`Error deleting Paynkolay saved card: ${error?.message}`)
     return res.status(500).json({
       success: false,
-      error: error.message || "Failed to delete saved card",
+      error: "Kayıtlı kart silinemedi.",
     })
   }
 }
