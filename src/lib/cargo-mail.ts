@@ -1,6 +1,7 @@
 import nodemailer from "nodemailer"
 import fs from "fs"
 import path from "path"
+import { Modules } from "@medusajs/framework/utils"
 import { getTrackingUrl, resolveCarrier } from "./cargo"
 
 export type CargoStatus = "shipped" | "delivered"
@@ -62,8 +63,6 @@ export async function sendCargoStatusEmail(
       "order.display_id",
       "order.created_at",
       "order.shipping_address.*",
-      "order.items.title",
-      "order.items.quantity",
     ],
     filters: { id: fulfillmentId },
   })
@@ -75,6 +74,21 @@ export async function sendCargoStatusEmail(
       `[CargoMail:${status}] Fulfillment için sipariş bulunamadı: ${fulfillmentId}`
     )
     return
+  }
+
+  // Sipariş kalemlerini Order Module Service'ten DİREKT oku — query.graph'ın
+  // fulfillment→order.items yolu quantity'yi güvenilir döndürmüyordu
+  // (mailde "undefinedx ..." çıkıyordu).
+  const num = (v: any) => Number(v ?? 0)
+  let orderItems: any[] = []
+  try {
+    const orderModuleService = container.resolve(Modules.ORDER)
+    const fullOrder = await orderModuleService.retrieveOrder(order.id, {
+      relations: ["items"],
+    })
+    orderItems = fullOrder.items || []
+  } catch (err: any) {
+    logger.error(`[CargoMail:${status}] Sipariş kalemleri okunamadı: ${err.message}`)
   }
 
   const copy = COPY[status]
@@ -106,11 +120,11 @@ export async function sendCargoStatusEmail(
           )
       : `<div style="font-size: 16px; font-weight: 700; color: #0f172a;">Kargo takip numarası yakında aktif olacaktır.</div>`
 
-  const itemsHtml = (order.items || [])
+  const itemsHtml = orderItems
     .map(
       (item: any) => `
     <li style="padding: 8px 0; border-bottom: 1px dashed #e2e8f0; font-size: 14px; color: #475569;">
-      <strong>${item.quantity}x</strong> ${item.title}
+      <strong>${num(item.quantity)}x</strong> ${item.title}
     </li>`
     )
     .join("")
@@ -154,20 +168,9 @@ export async function sendCargoStatusEmail(
       </body>
     </html>`
 
-  // Önizleme dosyası
-  try {
-    const dir = path.join(process.cwd(), "sent-emails")
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir)
-    fs.writeFileSync(
-      path.join(dir, `${copy.filePrefix}-${displayNo}.html`),
-      emailHtml
-    )
-    logger.info(`[CargoMail:${status}] Önizleme kaydedildi: ${copy.filePrefix}-${displayNo}.html`)
-  } catch (err: any) {
-    logger.error(`[CargoMail:${status}] Önizleme yazılamadı: ${err.message}`)
-  }
-
-  // SMTP varsa gönder
+  // ÖNCE SMTP ile gönder, SONRA önizleme yaz. (sent-emails/ proje içinde
+  // olduğundan dosya yazımı dev watcher'ı tetikleyip sunucuyu yeniden başlatır;
+  // önce yazılırsa await sendMail tamamlanmadan süreç ölür ve mail gitmez.)
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env
   if (SMTP_HOST && SMTP_USER && SMTP_PASS) {
     try {
@@ -189,5 +192,18 @@ export async function sendCargoStatusEmail(
     }
   } else {
     logger.info(`[CargoMail:${status}] SMTP tanımlı değil; sadece önizleme kaydedildi.`)
+  }
+
+  // Önizleme dosyası (yerel inceleme için)
+  try {
+    const dir = path.join(process.cwd(), "sent-emails")
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir)
+    fs.writeFileSync(
+      path.join(dir, `${copy.filePrefix}-${displayNo}.html`),
+      emailHtml
+    )
+    logger.info(`[CargoMail:${status}] Önizleme kaydedildi: ${copy.filePrefix}-${displayNo}.html`)
+  } catch (err: any) {
+    logger.error(`[CargoMail:${status}] Önizleme yazılamadı: ${err.message}`)
   }
 }
