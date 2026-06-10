@@ -12,7 +12,7 @@ const BlogPost = model.define("blog_post", {
   summary: model.text().nullable(),
   content: model.text().default(""),
   author: model.text().default(""),
-  status: model.enum(["draft", "published"]).default("draft"),
+  status: model.enum(["draft", "published"]).default("draft").index(),
   cover_image: model.text().nullable(),
   related_products: model.json().nullable(),
   published_at: model.dateTime().nullable(),

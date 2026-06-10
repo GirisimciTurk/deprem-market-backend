@@ -2,6 +2,7 @@ import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { z } from "zod"
 import { RESELLER_MODULE } from "../../../modules/reseller"
 import ResellerModuleService from "../../../modules/reseller/service"
+import { resellerLimiter, enforceRateLimit } from "../../../lib/rate-limiter"
 
 const schema = z.object({
   company_name: z.string().min(1, "Firma adı zorunlu"),
@@ -15,6 +16,8 @@ const schema = z.object({
 
 /** POST /store/reseller-applications — herkese açık bayilik başvurusu. */
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
+  if (await enforceRateLimit(resellerLimiter, req, res)) return
+
   const parsed = schema.safeParse(req.body)
   if (!parsed.success) {
     return res.status(400).json({ message: "Geçersiz başvuru.", issues: parsed.error.issues })

@@ -13,7 +13,7 @@ const ResellerApplication = model.define("reseller_application", {
   city: model.text().default(""),
   tax_number: model.text().default(""),
   message: model.text().default(""),
-  status: model.enum(["pending", "approved", "rejected"]).default("pending"),
+  status: model.enum(["pending", "approved", "rejected"]).default("pending").index(),
 })
 
 export default ResellerApplication

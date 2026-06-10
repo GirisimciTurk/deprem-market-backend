@@ -1,0 +1,13 @@
+node_modules
+.medusa
+dist
+.git
+.github
+*.log
+.env
+.env.*
+sent-emails
+static
+coverage
+.DS_Store
+README.md

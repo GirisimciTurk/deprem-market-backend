@@ -84,6 +84,12 @@ export default defineMiddlewares({
       matcher: "/store/reseller-applications/me",
       middlewares: [authenticate("customer", ["session", "bearer"])],
     },
+    {
+      // İade talebi oluşturmak için giriş yapmış müşteri gerekir (sipariş sahipliği doğrulanır).
+      method: ["POST"],
+      matcher: "/store/return-requests",
+      middlewares: [authenticate("customer", ["session", "bearer"])],
+    },
     // RBAC: hassas admin uçları yalnızca 'admin' rolüne açık.
     ...ADMIN_ONLY_MATCHERS.map((matcher) => ({
       matcher,

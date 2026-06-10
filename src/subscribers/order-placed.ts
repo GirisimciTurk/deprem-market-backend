@@ -1,7 +1,8 @@
 import { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
-import nodemailer from "nodemailer"
+import { Modules } from "@medusajs/framework/utils"
 import fs from "fs"
 import path from "path"
+import { sendMail } from "../lib/mailer"
 
 type OrderPlacedEvent = {
   id: string
@@ -15,49 +16,98 @@ export default async function orderPlacedHandler({
   const logger = container.resolve("logger")
   logger.info(`[OrderPlacedSubscriber] Order placed event triggered for order: ${orderId}`)
 
-  const query = container.resolve("query")
-  
-  // Fetch order with items
-  const { data: orders } = await query.graph({
-    entity: "order",
-    fields: [
-      "id",
-      "email",
-      "total",
-      "currency_code",
-      "display_id",
-      "created_at",
-      "shipping_address.*",
-      "items.title",
-      "items.quantity",
-      "items.unit_price"
-    ],
-    filters: { id: orderId }
-  })
-
-  if (!orders || orders.length === 0) {
-    logger.error(`[OrderPlacedSubscriber] Order not found: ${orderId}`)
+  // order.placed emit edildiği anda query.graph index'i sipariş kalemlerinin
+  // quantity'sini ve order.total'i HENÜZ yansıtmaz (unit_price hemen gelir ama
+  // quantity undefined, order.total sadece kargo kadar olur → mailde
+  // "undefined adet / NaN / 50 TL" çıkıyordu). Bu yüzden Order Module
+  // Service'ten DİREKT okur, tutarı güvenilir primitiflerden
+  // (unit_price × quantity + kargo) hesaplarız — bu, müşterinin checkout'ta
+  // ödediği (vergi dahil) tutarla birebir eşleşir.
+  const orderModuleService = container.resolve(Modules.ORDER)
+  let order: any
+  try {
+    order = await orderModuleService.retrieveOrder(orderId, {
+      relations: [
+        "items",
+        "items.adjustments",
+        "shipping_methods",
+        "shipping_methods.adjustments",
+        "shipping_address",
+      ],
+    })
+  } catch (err: any) {
+    logger.error(`[OrderPlacedSubscriber] Order not found: ${orderId} (${err.message})`)
     return
   }
 
-  const order = orders[0]
   logger.info(`[OrderPlacedSubscriber] Order details fetched. Customer email: ${order.email}`)
 
-  // Generate HTML Items list
-  const itemsHtml = (order.items || []).map((item: any) => {
-    const price = (item.unit_price / 100).toFixed(2)
-    const total = ((item.unit_price * item.quantity) / 100).toFixed(2)
-    return `
-      <tr>
-        <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; font-size: 14px; color: #1e293b;">${item.title}</td>
-        <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; font-size: 14px; text-align: center; color: #475569;">${item.quantity}</td>
-        <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; font-size: 14px; text-align: right; color: #475569;">${price} ${order.currency_code.toUpperCase()}</td>
-        <td style="padding: 12px; border-bottom: 1px solid #e2e8f0; font-size: 14px; text-align: right; font-weight: bold; color: #1e293b;">${total} ${order.currency_code.toUpperCase()}</td>
-      </tr>
-    `
-  }).join("")
+  const num = (v: any) => Number(v ?? 0)
+  const currency = (order.currency_code || "try").toUpperCase()
+  // Kuruş (minor) → "1.750,00" biçimi
+  const fmt = (minor: number) =>
+    (minor / 100).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-  const grandTotal = (order.total / 100).toFixed(2)
+  // Trendyol tarzı dikey ürün listesi: görsel + ad + varyant + adet + satır tutarı
+  const items = order.items || []
+  const itemsHtml = items
+    .map((item: any) => {
+      const qty = num(item.quantity)
+      const lineTotal = num(item.unit_price) * qty
+      const variant =
+        item.variant_title && item.variant_title !== item.title ? item.variant_title : ""
+      const thumb = item.thumbnail
+        ? `<img src="${item.thumbnail}" alt="" width="64" height="64" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;display:block;">`
+        : `<div style="width:64px;height:64px;border-radius:8px;background:#f1f5f9;border:1px solid #e2e8f0;"></div>`
+      return `
+      <tr>
+        <td valign="top" width="76" style="padding:14px 0;border-bottom:1px solid #f1f5f9;">${thumb}</td>
+        <td valign="top" style="padding:14px 0;border-bottom:1px solid #f1f5f9;">
+          <div style="font-size:14px;font-weight:600;color:#1e293b;line-height:20px;">${item.title}</div>
+          ${variant ? `<div style="font-size:12px;color:#94a3b8;margin-top:2px;">${variant}</div>` : ""}
+          <div style="font-size:13px;color:#64748b;margin-top:6px;">Adet: ${qty}</div>
+        </td>
+        <td valign="top" style="padding:14px 0;border-bottom:1px solid #f1f5f9;text-align:right;font-size:15px;font-weight:700;color:#1e293b;white-space:nowrap;">${fmt(lineTotal)} ${currency}</td>
+      </tr>`
+    })
+    .join("")
+
+  // Tutarlar güvenilir primitiflerden hesaplanır (query.graph order.total emit
+  // anında lag'liyor + vergiyi farklı hesaplıyor). Bu toplam müşterinin
+  // checkout'ta ödediği (vergi dahil) tutarla birebir eşleşir.
+  const itemsSubtotal = items.reduce(
+    (s: number, it: any) => s + num(it.unit_price) * num(it.quantity),
+    0
+  )
+  const shippingTotal = (order.shipping_methods || []).reduce(
+    (s: number, m: any) => s + num(m.amount),
+    0
+  )
+  const discountTotal =
+    items.reduce(
+      (s: number, it: any) =>
+        s + (it.adjustments || []).reduce((a: number, x: any) => a + num(x.amount), 0),
+      0
+    ) +
+    (order.shipping_methods || []).reduce(
+      (s: number, m: any) =>
+        s + (m.adjustments || []).reduce((a: number, x: any) => a + num(x.amount), 0),
+      0
+    )
+  const grandTotalMinor = itemsSubtotal + shippingTotal - discountTotal
+
+  // Sipariş özeti satırları
+  const summaryRow = (label: string, value: string, opts: { strong?: boolean; color?: string } = {}) => `
+                <tr>
+                  <td style="padding:6px 0;font-size:${opts.strong ? "16px" : "14px"};color:${opts.color || (opts.strong ? "#0f172a" : "#64748b")};font-weight:${opts.strong ? "800" : "500"};">${label}</td>
+                  <td style="padding:6px 0;font-size:${opts.strong ? "18px" : "14px"};color:${opts.color || (opts.strong ? "#e11d48" : "#1e293b")};font-weight:${opts.strong ? "800" : "600"};text-align:right;white-space:nowrap;">${value}</td>
+                </tr>`
+  const summaryHtml =
+    summaryRow("Ara Toplam", `${fmt(itemsSubtotal)} ${currency}`) +
+    summaryRow("Kargo", shippingTotal === 0 ? "Ücretsiz" : `${fmt(shippingTotal)} ${currency}`) +
+    (discountTotal > 0 ? summaryRow("İndirim", `-${fmt(discountTotal)} ${currency}`, { color: "#16a34a" }) : "") +
+    `<tr><td colspan="2" style="border-top:2px solid #e2e8f0;padding-top:4px;"></td></tr>` +
+    summaryRow("Genel Toplam", `${fmt(grandTotalMinor)} ${currency}`, { strong: true })
 
   // Custom styled template
   const emailHtml = `
@@ -103,27 +153,23 @@ export default async function orderPlacedHandler({
                 </tr>
               </table>
               
-              <!-- Products Table -->
+              <!-- Ürünler (dikey liste) -->
+              <h3 style="font-size: 16px; font-weight: 700; color: #0f172a; border-bottom: 2px solid #f1f5f9; padding-bottom: 8px; margin-bottom: 6px;">
+                Ürünler (${items.length})
+              </h3>
+              <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin-bottom: 24px;">
+                <tbody>
+                  ${itemsHtml}
+                </tbody>
+              </table>
+
+              <!-- Sipariş Özeti -->
               <h3 style="font-size: 16px; font-weight: 700; color: #0f172a; border-bottom: 2px solid #f1f5f9; padding-bottom: 8px; margin-bottom: 12px;">
                 Sipariş Özeti
               </h3>
-              <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin-bottom: 30px;">
-                <thead>
-                  <tr style="background-color: #f8fafc;">
-                    <th style="padding: 8px 12px; text-align: left; font-size: 12px; color: #64748b; font-weight: bold; border-bottom: 2px solid #e2e8f0;">Ürün</th>
-                    <th style="padding: 8px 12px; text-align: center; font-size: 12px; color: #64748b; font-weight: bold; border-bottom: 2px solid #e2e8f0; width: 60px;">Adet</th>
-                    <th style="padding: 8px 12px; text-align: right; font-size: 12px; color: #64748b; font-weight: bold; border-bottom: 2px solid #e2e8f0; width: 100px;">Birim Fiyat</th>
-                    <th style="padding: 8px 12px; text-align: right; font-size: 12px; color: #64748b; font-weight: bold; border-bottom: 2px solid #e2e8f0; width: 100px;">Toplam</th>
-                  </tr>
-                </thead>
+              <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 18px; margin-bottom: 30px;">
                 <tbody>
-                  ${itemsHtml}
-                  <tr>
-                    <td colspan="2" style="padding: 15px 12px; font-size: 16px; font-weight: bold; color: #0f172a;">Genel Toplam</td>
-                    <td colspan="2" style="padding: 15px 12px; font-size: 18px; font-weight: 800; color: #e11d48; text-align: right;">
-                      ${grandTotal} ${order.currency_code.toUpperCase()}
-                    </td>
-                  </tr>
+                  ${summaryHtml}
                 </tbody>
               </table>
 
@@ -150,6 +196,23 @@ export default async function orderPlacedHandler({
     </html>
   `
 
+  // Dispatch via SMTP FIRST, then write the preview file. (sent-emails/ lives
+  // inside the project, so writing it triggers the dev watcher to restart the
+  // server; if written first, the await sendMail below is killed mid-flight and
+  // no mail goes out.)
+  const result = await sendMail({
+    to: order.email || undefined,
+    subject: `Siparişiniz Alındı (#${order.display_id || order.id.substring(0, 8)})`,
+    html: emailHtml,
+  })
+  if (result.ok) {
+    logger.info(`[OrderPlacedSubscriber] Live confirmation email sent to: ${order.email}`)
+  } else if (!result.configured) {
+    logger.info(`[OrderPlacedSubscriber] SMTP credentials not set. Saved visual preview inside sent-emails/.`)
+  } else {
+    logger.error(`[OrderPlacedSubscriber] SMTP dispatch failed (retry sonrası): ${result.error}`)
+  }
+
   // Save localized backup HTML file to watch locally
   try {
     const dir = path.join(process.cwd(), "sent-emails")
@@ -161,39 +224,6 @@ export default async function orderPlacedHandler({
     logger.info(`[OrderPlacedSubscriber] Visual email backup successfully saved: ${filePath}`)
   } catch (err: any) {
     logger.error(`[OrderPlacedSubscriber] Failed to write preview file: ${err.message}`)
-  }
-
-  // Dispatch via SMTP if configurations exist
-  const smtpHost = process.env.SMTP_HOST
-  const smtpPort = process.env.SMTP_PORT
-  const smtpUser = process.env.SMTP_USER
-  const smtpPass = process.env.SMTP_PASS
-
-  if (smtpHost && smtpUser && smtpPass) {
-    try {
-      const transporter = nodemailer.createTransport({
-        host: smtpHost,
-        port: parseInt(smtpPort || "587"),
-        secure: smtpPort === "465",
-        auth: {
-          user: smtpUser,
-          pass: smtpPass,
-        },
-      })
-
-      await transporter.sendMail({
-        from: `"EKYP Deprem Market" <${smtpUser}>`,
-        to: order.email || undefined,
-        subject: `Siparişiniz Alındı (#${order.display_id || order.id.substring(0, 8)})`,
-        html: emailHtml,
-      })
-
-      logger.info(`[OrderPlacedSubscriber] Live confirmation email sent to: ${order.email}`)
-    } catch (sendErr: any) {
-      logger.error(`[OrderPlacedSubscriber] SMTP dispatch failed: ${sendErr.message}`)
-    }
-  } else {
-    logger.info(`[OrderPlacedSubscriber] SMTP credentials not set. Saved visual preview inside: apps/backend/sent-emails/`)
   }
 }
 

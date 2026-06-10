@@ -9,7 +9,7 @@ const querySchema = z.object({
 
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   // Rate limit to prevent enumeration of sequential order numbers + guessed emails.
-  if (enforceRateLimit(orderTrackingLimiter, req, res)) return;
+  if (await enforceRateLimit(orderTrackingLimiter, req, res)) return;
 
   const parsed = querySchema.safeParse(req.query);
   if (!parsed.success) {

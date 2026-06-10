@@ -1,7 +1,7 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { createHash } from "crypto"
 import { z } from "zod"
 import { getPaynkolayConfig } from "../../../../lib/paynkolay-config"
+import { buildInitRequestHash } from "../../../../lib/paynkolay-hash"
 import { hashLimiter, enforceRateLimit } from "../../../../lib/rate-limiter"
 
 const bodySchema = z.object({
@@ -14,7 +14,7 @@ const bodySchema = z.object({
 })
 
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
-  if (enforceRateLimit(hashLimiter, req, res)) return
+  if (await enforceRateLimit(hashLimiter, req, res)) return
 
   const logger = req.scope.resolve("logger")
 
@@ -39,8 +39,16 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     // kayıtlı kartla ödeniyorsa forma POST edilen csCustomerKey ile AYNI değer imzaya
     // girmeli, aksi halde Paynkolay imzayı reddeder.
     const customerKey = csCustomerKey || ""
-    const raw = `${sx}|${clientRefCode}|${amount}|${successUrl}|${failUrl}|${rnd}|${customerKey}|${secretKey}`
-    const hashDataV2 = createHash("sha512").update(raw, "utf-8").digest("base64")
+    const hashDataV2 = buildInitRequestHash({
+      sx,
+      clientRefCode,
+      amount,
+      successUrl,
+      failUrl,
+      rnd,
+      customerKey,
+      secretKey,
+    })
 
     return res.status(200).json({
       success: true,

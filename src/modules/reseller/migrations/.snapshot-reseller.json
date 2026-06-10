@@ -216,6 +216,15 @@
           "expression": "CREATE INDEX IF NOT EXISTS \"IDX_reseller_application_email\" ON \"reseller_application\" (\"email\") WHERE deleted_at IS NULL"
         },
         {
+          "keyName": "IDX_reseller_application_status",
+          "columnNames": [],
+          "composite": false,
+          "constraint": false,
+          "primary": false,
+          "unique": false,
+          "expression": "CREATE INDEX IF NOT EXISTS \"IDX_reseller_application_status\" ON \"reseller_application\" (\"status\") WHERE deleted_at IS NULL"
+        },
+        {
           "keyName": "IDX_reseller_application_deleted_at",
           "columnNames": [],
           "composite": false,

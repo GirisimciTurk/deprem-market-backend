@@ -21,9 +21,11 @@ import {
   ProviderWebhookPayload,
   WebhookActionResult,
 } from "@medusajs/types"
-import { createHash } from "crypto"
 import { getPaynkolayConfig } from "../../../lib/paynkolay-config"
+import { buildInitRequestHash, buildCancelRefundHash } from "../../../lib/paynkolay-hash"
 
+// İmza formülü tek kaynakta (lib/paynkolay-hash). Bu sarmalayıcı çağrı yerlerinin
+// pozisyonel imzasını korur.
 function calculateHash(
   sx: string,
   clientRefCode: string,
@@ -34,8 +36,16 @@ function calculateHash(
   customerKey: string,
   merchantSecretKey: string
 ): string {
-  const raw = `${sx}|${clientRefCode}|${amount}|${successUrl}|${failUrl}|${rnd}|${customerKey}|${merchantSecretKey}`
-  return createHash("sha512").update(raw, "utf-8").digest("base64")
+  return buildInitRequestHash({
+    sx,
+    clientRefCode,
+    amount,
+    successUrl,
+    failUrl,
+    rnd,
+    customerKey,
+    secretKey: merchantSecretKey,
+  })
 }
 
 function getFormattedDate(): string {
@@ -186,9 +196,15 @@ class PaynkolayProviderService extends AbstractPaymentProvider {
 
     const type = "refund"
 
-    // Signature: sx | referenceCode | type | amount | trxDate | merchantSecretKey
-    const rawHash = `${cancelSx}|${referenceCode}|${type}|${amount}|${trxDate}|${secretKey}`
-    const hashDatav2 = createHash("sha512").update(rawHash, "utf-8").digest("base64")
+    // İmza: sx|referenceCode|type|amount|trxDate|merchantSecretKey (lib/paynkolay-hash)
+    const hashDatav2 = buildCancelRefundHash({
+      sx: cancelSx,
+      referenceCode,
+      type,
+      amount,
+      trxDate,
+      secretKey,
+    })
 
     const url = `${cfg.baseUrl}/v1/CancelRefundPayment`
 
@@ -282,9 +298,15 @@ class PaynkolayProviderService extends AbstractPaymentProvider {
 
     const type = "cancel"
 
-    // Signature: sx | referenceCode | type | amount | trxDate | merchantSecretKey
-    const rawHash = `${cancelSx}|${referenceCode}|${type}|${amount}|${trxDate}|${secretKey}`
-    const hashDatav2 = createHash("sha512").update(rawHash, "utf-8").digest("base64")
+    // İmza: sx|referenceCode|type|amount|trxDate|merchantSecretKey (lib/paynkolay-hash)
+    const hashDatav2 = buildCancelRefundHash({
+      sx: cancelSx,
+      referenceCode,
+      type,
+      amount,
+      trxDate,
+      secretKey,
+    })
 
     const url = `${cfg.baseUrl}/v1/CancelRefundPayment`
 

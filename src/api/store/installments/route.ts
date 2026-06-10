@@ -19,12 +19,12 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const rawIp = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "unknown_ip"
   const clientIp = rawIp.split(",")[0].trim()
 
-  if (installmentsLimiter.isLimited(clientIp)) {
+  if (await installmentsLimiter.isLimited(clientIp)) {
     logger.warn(`Store Installments API: Rate limit exceeded for IP: ${clientIp}`)
     return res.status(429).json({
       success: false,
-      error: "Too many requests. Please try again later.",
-      retryAfterSeconds: installmentsLimiter.getRemainingSeconds(clientIp)
+      error: "Çok fazla istek gönderildi. Lütfen biraz sonra tekrar deneyin.",
+      retryAfterSeconds: await installmentsLimiter.getRemainingSeconds(clientIp)
     })
   }
 
