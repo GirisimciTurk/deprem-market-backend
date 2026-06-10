@@ -24,11 +24,11 @@ const COPY: Record<ReturnStatus, StatusCopy> = {
     filePrefix: "return-requested",
   },
   received: {
-    subject: (no) => `İadeniz Teslim Alındı, Ücret İadesi Başlatıldı (#${no})`,
-    heading: "İadeniz Teslim Alındı!",
+    subject: (no) => `İadeniz Onaylandı, Ücret İadesi Yapıldı (#${no})`,
+    heading: "İadeniz Onaylandı!",
     emoji: "✅",
     intro:
-      "İade ettiğiniz ürünler tarafımıza ulaşmış ve teslim alınmıştır. Ücret iadeniz, ödeme yönteminize bağlı olarak birkaç iş günü içinde hesabınıza yansıyacaktır. Anlayışınız için teşekkür ederiz.",
+      "İade talebiniz onaylanmıştır. Ücret iadeniz başlatılmış olup, ödeme yönteminize bağlı olarak birkaç iş günü içinde hesabınıza yansıyacaktır. Anlayışınız için teşekkür ederiz.",
     accent: "#16a34a",
     filePrefix: "return-received",
   },
