@@ -164,6 +164,16 @@ export async function setStockedQuantity(
 export async function recordMovement(container: any, input: RecordMovementInput): Promise<void> {
   try {
     const svc: StockMovementModuleService = container.resolve(STOCK_MOVEMENT_MODULE)
+    // Idempotency: reference_id'li hareketlerde (satış/iade/transfer) event yeniden teslim
+    // edilirse çift kayıt olmasın — aynı (reference_id + kalem + tür) varsa atla.
+    if (input.reference_id) {
+      const existing = await svc.listStockMovements({
+        reference_id: input.reference_id,
+        inventory_item_id: input.inventory_item_id,
+        type: input.type,
+      })
+      if (existing?.length) return
+    }
     await svc.createStockMovements({
       inventory_item_id: input.inventory_item_id,
       location_id: input.location_id,

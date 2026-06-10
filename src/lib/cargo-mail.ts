@@ -1,8 +1,7 @@
-import fs from "fs"
-import path from "path"
 import { Modules } from "@medusajs/framework/utils"
 import { getTrackingUrl, resolveCarrier } from "./cargo"
 import { sendMail } from "./mailer"
+import { writeEmailPreview } from "./email-preview"
 
 export type CargoStatus = "shipped" | "delivered"
 
@@ -184,16 +183,7 @@ export async function sendCargoStatusEmail(
     logger.error(`[CargoMail:${status}] SMTP gönderimi başarısız (retry sonrası): ${result.error}`)
   }
 
-  // Önizleme dosyası (yerel inceleme için)
-  try {
-    const dir = path.join(process.cwd(), "sent-emails")
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir)
-    fs.writeFileSync(
-      path.join(dir, `${copy.filePrefix}-${displayNo}.html`),
-      emailHtml
-    )
-    logger.info(`[CargoMail:${status}] Önizleme kaydedildi: ${copy.filePrefix}-${displayNo}.html`)
-  } catch (err: any) {
-    logger.error(`[CargoMail:${status}] Önizleme yazılamadı: ${err.message}`)
-  }
+  // Önizleme dosyası (yerel inceleme için) — proje DIŞINA yazılır (dev watcher tuzağı).
+  const preview = writeEmailPreview(`${copy.filePrefix}-${displayNo}.html`, emailHtml)
+  if (preview) logger.info(`[CargoMail:${status}] Önizleme kaydedildi: ${preview}`)
 }

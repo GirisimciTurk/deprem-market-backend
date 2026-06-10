@@ -1,7 +1,6 @@
-import fs from "fs"
-import path from "path"
 import { Modules } from "@medusajs/framework/utils"
 import { sendMail } from "./mailer"
+import { writeEmailPreview } from "./email-preview"
 
 /**
  * Sipariş iptal edildiğinde müşteriye "Siparişiniz İptal Edildi" e-postası gönderir.
@@ -102,12 +101,6 @@ export async function sendOrderCanceledEmail(
     logger.error(`[OrderCanceledMail] SMTP gönderimi başarısız (retry sonrası): ${result.error}`)
   }
 
-  try {
-    const dir = path.join(process.cwd(), "sent-emails")
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir)
-    fs.writeFileSync(path.join(dir, `canceled-${displayNo}.html`), emailHtml)
-    logger.info(`[OrderCanceledMail] Önizleme kaydedildi: canceled-${displayNo}.html`)
-  } catch (err: any) {
-    logger.error(`[OrderCanceledMail] Önizleme yazılamadı: ${err.message}`)
-  }
+  const preview = writeEmailPreview(`canceled-${displayNo}.html`, emailHtml)
+  if (preview) logger.info(`[OrderCanceledMail] Önizleme kaydedildi: ${preview}`)
 }

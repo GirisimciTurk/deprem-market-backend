@@ -1,7 +1,6 @@
 import { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
-import fs from "fs"
-import path from "path"
 import { sendMail } from "../lib/mailer"
+import { writeEmailPreview } from "../lib/email-preview"
 
 type PasswordResetEvent = {
   entity_id: string // the account email/identifier
@@ -58,17 +57,10 @@ export default async function passwordResetHandler({
     </div>
   `
 
-  // Always save a local preview so resets are recoverable even without SMTP.
-  try {
-    const dir = path.join(process.cwd(), "sent-emails")
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir)
-    const filePath = path.join(dir, `password-reset-${email.replace(/[^a-z0-9]/gi, "_")}.html`)
-    fs.writeFileSync(filePath, emailHtml)
-    logger.info(`[PasswordReset] Reset email preview saved: ${filePath}`)
-    logger.info(`[PasswordReset] Reset link for ${email}: ${resetLink}`)
-  } catch (err: any) {
-    logger.error(`[PasswordReset] Failed to write preview file: ${err.message}`)
-  }
+  // Always save a local preview (proje DIŞINA) so resets are recoverable even without SMTP.
+  const preview = writeEmailPreview(`password-reset-${email.replace(/[^a-z0-9]/gi, "_")}.html`, emailHtml)
+  if (preview) logger.info(`[PasswordReset] Reset email preview saved: ${preview}`)
+  logger.info(`[PasswordReset] Reset link for ${email}: ${resetLink}`)
 
   const result = await sendMail({
     to: email,

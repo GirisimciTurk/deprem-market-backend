@@ -1,8 +1,7 @@
 import { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
 import { Modules } from "@medusajs/framework/utils"
-import fs from "fs"
-import path from "path"
 import { sendMail } from "../lib/mailer"
+import { writeEmailPreview } from "../lib/email-preview"
 
 type OrderPlacedEvent = {
   id: string
@@ -213,18 +212,9 @@ export default async function orderPlacedHandler({
     logger.error(`[OrderPlacedSubscriber] SMTP dispatch failed (retry sonrası): ${result.error}`)
   }
 
-  // Save localized backup HTML file to watch locally
-  try {
-    const dir = path.join(process.cwd(), "sent-emails")
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir)
-    }
-    const filePath = path.join(dir, `order-${order.display_id || order.id}.html`)
-    fs.writeFileSync(filePath, emailHtml)
-    logger.info(`[OrderPlacedSubscriber] Visual email backup successfully saved: ${filePath}`)
-  } catch (err: any) {
-    logger.error(`[OrderPlacedSubscriber] Failed to write preview file: ${err.message}`)
-  }
+  // Önizleme HTML'i — proje DIŞINA (OS temp) yazılır; aksi halde dev watcher restart olur.
+  const preview = writeEmailPreview(`order-${order.display_id || order.id}.html`, emailHtml)
+  if (preview) logger.info(`[OrderPlacedSubscriber] Visual email backup saved: ${preview}`)
 }
 
 export const config: SubscriberConfig = {

@@ -19,23 +19,33 @@ export default async function fulfillmentStockHandler({
 }: SubscriberArgs<{ order_id: string; fulfillment_id: string }>) {
   try {
     const query = container.resolve(ContainerRegistrationKeys.QUERY)
+    // NOT: fulfillment.items.line_item.* cross-modül yolu query.graph'ta patlıyor ("strategy"
+    // hatası). Bunun yerine FulfillmentItem'ın skaler line_item_id'sini alıp variant_id'yi
+    // siparişin kalemlerinden eşliyoruz.
     const { data: fulfillments } = await query.graph({
       entity: "fulfillment",
-      fields: [
-        "location_id",
-        "items.quantity",
-        "items.line_item.variant_id",
-        "items.line_item.title",
-        "items.line_item.product_title",
-      ],
+      fields: ["location_id", "items.quantity", "items.line_item_id", "items.title"],
       filters: { id: data.fulfillment_id },
     })
     const f = fulfillments?.[0]
     if (!f?.location_id) return
 
+    const { data: orders } = await query.graph({
+      entity: "order",
+      fields: ["items.id", "items.variant_id", "items.product_title", "items.title"],
+      filters: { id: data.order_id },
+    })
+    const lineMap = new Map<string, { variant_id?: string; title?: string }>(
+      (orders?.[0]?.items ?? []).map((it: any) => [
+        it.id,
+        { variant_id: it.variant_id, title: it.product_title || it.title },
+      ])
+    )
+
     for (const fi of f.items ?? []) {
-      const li = fi.line_item
-      const variantId = li?.variant_id
+      if (!fi?.line_item_id) continue
+      const li = lineMap.get(fi.line_item_id)
+      const variantId: string | undefined = li?.variant_id
       const qty = Number(fi.quantity) || 0
       if (!variantId || qty <= 0) continue
 
@@ -50,12 +60,12 @@ export default async function fulfillmentStockHandler({
         quantity_delta: -qty,
         resulting_quantity: level?.stocked_quantity ?? null,
         sku: inv.sku,
-        product_title: inv.product_title ?? li?.product_title ?? li?.title ?? null,
-        reference_id: data.order_id,
+        product_title: inv.product_title ?? li?.title ?? fi.title ?? null,
+        reference_id: data.fulfillment_id,
         reason: "Sipariş kargo hazırlığı (fulfillment)",
       })
 
-      await maybeAlertLowStock(container, {
+      void maybeAlertLowStock(container, {
         inventoryItemId: inv.inventory_item_id,
         locationId: f.location_id,
       })

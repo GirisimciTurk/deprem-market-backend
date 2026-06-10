@@ -1,6 +1,5 @@
-import fs from "fs"
-import path from "path"
 import { sendMail } from "./mailer"
+import { writeEmailPreview } from "./email-preview"
 
 export type ReturnStatus = "requested" | "received"
 
@@ -132,12 +131,6 @@ export async function sendReturnStatusEmail(
     logger.error(`[ReturnMail:${status}] SMTP gönderimi başarısız (retry sonrası): ${result.error}`)
   }
 
-  try {
-    const dir = path.join(process.cwd(), "sent-emails")
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir)
-    fs.writeFileSync(path.join(dir, `${copy.filePrefix}-${displayNo}.html`), emailHtml)
-    logger.info(`[ReturnMail:${status}] Önizleme kaydedildi: ${copy.filePrefix}-${displayNo}.html`)
-  } catch (err: any) {
-    logger.error(`[ReturnMail:${status}] Önizleme yazılamadı: ${err.message}`)
-  }
+  const preview = writeEmailPreview(`${copy.filePrefix}-${displayNo}.html`, emailHtml)
+  if (preview) logger.info(`[ReturnMail:${status}] Önizleme kaydedildi: ${preview}`)
 }
