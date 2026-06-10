@@ -158,5 +158,8 @@ module.exports = defineConfig({
     reseller: {
       resolve: "./src/modules/reseller",
     },
+    stock_movement: {
+      resolve: "./src/modules/stock_movement",
+    },
   },
 })
