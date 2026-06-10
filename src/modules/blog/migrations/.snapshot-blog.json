@@ -247,6 +247,15 @@
           "expression": "CREATE UNIQUE INDEX IF NOT EXISTS \"IDX_blog_post_slug_unique\" ON \"blog_post\" (\"slug\") WHERE deleted_at IS NULL"
         },
         {
+          "keyName": "IDX_blog_post_status",
+          "columnNames": [],
+          "composite": false,
+          "constraint": false,
+          "primary": false,
+          "unique": false,
+          "expression": "CREATE INDEX IF NOT EXISTS \"IDX_blog_post_status\" ON \"blog_post\" (\"status\") WHERE deleted_at IS NULL"
+        },
+        {
           "keyName": "IDX_blog_post_deleted_at",
           "columnNames": [],
           "composite": false,

@@ -1,8 +1,8 @@
 import { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
 import { Modules } from "@medusajs/framework/utils"
-import nodemailer from "nodemailer"
 import fs from "fs"
 import path from "path"
+import { sendMail } from "../lib/mailer"
 
 type OrderPlacedEvent = {
   id: string
@@ -200,36 +200,17 @@ export default async function orderPlacedHandler({
   // inside the project, so writing it triggers the dev watcher to restart the
   // server; if written first, the await sendMail below is killed mid-flight and
   // no mail goes out.)
-  const smtpHost = process.env.SMTP_HOST
-  const smtpPort = process.env.SMTP_PORT
-  const smtpUser = process.env.SMTP_USER
-  const smtpPass = process.env.SMTP_PASS
-
-  if (smtpHost && smtpUser && smtpPass) {
-    try {
-      const transporter = nodemailer.createTransport({
-        host: smtpHost,
-        port: parseInt(smtpPort || "587"),
-        secure: smtpPort === "465",
-        auth: {
-          user: smtpUser,
-          pass: smtpPass,
-        },
-      })
-
-      await transporter.sendMail({
-        from: `"EKYP Deprem Market" <${smtpUser}>`,
-        to: order.email || undefined,
-        subject: `Siparişiniz Alındı (#${order.display_id || order.id.substring(0, 8)})`,
-        html: emailHtml,
-      })
-
-      logger.info(`[OrderPlacedSubscriber] Live confirmation email sent to: ${order.email}`)
-    } catch (sendErr: any) {
-      logger.error(`[OrderPlacedSubscriber] SMTP dispatch failed: ${sendErr.message}`)
-    }
+  const result = await sendMail({
+    to: order.email || undefined,
+    subject: `Siparişiniz Alındı (#${order.display_id || order.id.substring(0, 8)})`,
+    html: emailHtml,
+  })
+  if (result.ok) {
+    logger.info(`[OrderPlacedSubscriber] Live confirmation email sent to: ${order.email}`)
+  } else if (!result.configured) {
+    logger.info(`[OrderPlacedSubscriber] SMTP credentials not set. Saved visual preview inside sent-emails/.`)
   } else {
-    logger.info(`[OrderPlacedSubscriber] SMTP credentials not set. Saved visual preview inside: apps/backend/sent-emails/`)
+    logger.error(`[OrderPlacedSubscriber] SMTP dispatch failed (retry sonrası): ${result.error}`)
   }
 
   // Save localized backup HTML file to watch locally

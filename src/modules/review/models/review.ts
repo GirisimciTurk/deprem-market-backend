@@ -16,7 +16,7 @@ const ProductReview = model.define("product_review", {
   customer_name: model.text(),
   rating: model.number(),
   comment: model.text(),
-  status: model.enum(["pending", "approved", "spam"]).default("pending"),
+  status: model.enum(["pending", "approved", "spam"]).default("pending").index(),
   images: model.json().nullable(),
 })
 

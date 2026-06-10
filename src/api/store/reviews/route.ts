@@ -6,6 +6,7 @@ import {
 import { z } from "zod"
 import { REVIEW_MODULE } from "../../../modules/review"
 import ReviewModuleService from "../../../modules/review/service"
+import { reviewLimiter, enforceRateLimit } from "../../../lib/rate-limiter"
 
 /**
  * GET /store/reviews?product_handle=...
@@ -44,6 +45,8 @@ export async function POST(
   req: AuthenticatedMedusaRequest,
   res: MedusaResponse
 ) {
+  if (await enforceRateLimit(reviewLimiter, req, res)) return
+
   const parsed = createSchema.safeParse(req.body)
   if (!parsed.success) {
     return res

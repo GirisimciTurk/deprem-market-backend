@@ -10,7 +10,7 @@ const tokenSchema = z.string().trim().min(1).max(256).regex(/^[A-Za-z0-9._-]+$/)
 
 // Endpoint to list saved cards for a customer key (phone/email/TCKN)
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
-  if (enforceRateLimit(cardsLimiter, req, res)) return
+  if (await enforceRateLimit(cardsLimiter, req, res)) return
 
   const parsedKey = customerKeySchema.safeParse(req.query.customerKey)
   if (!parsedKey.success) {
@@ -73,7 +73,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
 // Endpoint to delete a saved card by token
 export async function DELETE(req: MedusaRequest, res: MedusaResponse) {
-  if (enforceRateLimit(cardsLimiter, req, res)) return
+  if (await enforceRateLimit(cardsLimiter, req, res)) return
 
   const parsed = z
     .object({ customerKey: customerKeySchema, token: tokenSchema })

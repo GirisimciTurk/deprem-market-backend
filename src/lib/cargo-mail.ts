@@ -1,8 +1,8 @@
-import nodemailer from "nodemailer"
 import fs from "fs"
 import path from "path"
 import { Modules } from "@medusajs/framework/utils"
 import { getTrackingUrl, resolveCarrier } from "./cargo"
+import { sendMail } from "./mailer"
 
 export type CargoStatus = "shipped" | "delivered"
 
@@ -169,29 +169,19 @@ export async function sendCargoStatusEmail(
     </html>`
 
   // ÖNCE SMTP ile gönder, SONRA önizleme yaz. (sent-emails/ proje içinde
-  // olduğundan dosya yazımı dev watcher'ı tetikleyip sunucuyu yeniden başlatır;
-  // önce yazılırsa await sendMail tamamlanmadan süreç ölür ve mail gitmez.)
-  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env
-  if (SMTP_HOST && SMTP_USER && SMTP_PASS) {
-    try {
-      const transporter = nodemailer.createTransport({
-        host: SMTP_HOST,
-        port: parseInt(SMTP_PORT || "587"),
-        secure: SMTP_PORT === "465",
-        auth: { user: SMTP_USER, pass: SMTP_PASS },
-      })
-      await transporter.sendMail({
-        from: `"EKYP Deprem Market" <${SMTP_USER}>`,
-        to: order.email || undefined,
-        subject: copy.subject(String(displayNo)),
-        html: emailHtml,
-      })
-      logger.info(`[CargoMail:${status}] E-posta gönderildi: ${order.email}`)
-    } catch (sendErr: any) {
-      logger.error(`[CargoMail:${status}] SMTP gönderimi başarısız: ${sendErr.message}`)
-    }
-  } else {
+  // olduğundan dosya yazımı dev watcher'ı tetikleyebilir.) Gönderim ortak pooled
+  // mailer üzerinden + geçici hatalarda retry ile yapılır.
+  const result = await sendMail({
+    to: order.email || undefined,
+    subject: copy.subject(String(displayNo)),
+    html: emailHtml,
+  })
+  if (result.ok) {
+    logger.info(`[CargoMail:${status}] E-posta gönderildi: ${order.email}`)
+  } else if (!result.configured) {
     logger.info(`[CargoMail:${status}] SMTP tanımlı değil; sadece önizleme kaydedildi.`)
+  } else {
+    logger.error(`[CargoMail:${status}] SMTP gönderimi başarısız (retry sonrası): ${result.error}`)
   }
 
   // Önizleme dosyası (yerel inceleme için)

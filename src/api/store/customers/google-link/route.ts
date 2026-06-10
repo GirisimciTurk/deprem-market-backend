@@ -7,6 +7,7 @@ import {
   createCustomerAccountWorkflow,
   setAuthAppMetadataWorkflow,
 } from "@medusajs/core-flows"
+import { googleLinkLimiter, enforceRateLimit } from "../../../../lib/rate-limiter"
 
 /**
  * Links a freshly-authenticated Google identity to a customer account.
@@ -33,6 +34,8 @@ export async function POST(
   req: AuthenticatedMedusaRequest,
   res: MedusaResponse
 ) {
+  if (await enforceRateLimit(googleLinkLimiter, req, res)) return
+
   const authContext = req.auth_context
 
   if (!authContext?.auth_identity_id) {

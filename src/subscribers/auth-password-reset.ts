@@ -1,7 +1,7 @@
 import { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
-import nodemailer from "nodemailer"
 import fs from "fs"
 import path from "path"
+import { sendMail } from "../lib/mailer"
 
 type PasswordResetEvent = {
   entity_id: string // the account email/identifier
@@ -63,35 +63,19 @@ export default async function passwordResetHandler({
     logger.error(`[PasswordReset] Failed to write preview file: ${err.message}`)
   }
 
-  const smtpHost = process.env.SMTP_HOST
-  const smtpPort = process.env.SMTP_PORT
-  const smtpUser = process.env.SMTP_USER
-  const smtpPass = process.env.SMTP_PASS
-
-  if (smtpHost && smtpUser && smtpPass) {
-    try {
-      const transporter = nodemailer.createTransport({
-        host: smtpHost,
-        port: parseInt(smtpPort || "587"),
-        secure: smtpPort === "465",
-        auth: { user: smtpUser, pass: smtpPass },
-      })
-
-      await transporter.sendMail({
-        from: `"EKYP Deprem Market" <${smtpUser}>`,
-        to: email,
-        subject: "Şifre Sıfırlama — Yönetim Paneli",
-        html: emailHtml,
-      })
-
-      logger.info(`[PasswordReset] Reset email sent to: ${email}`)
-    } catch (sendErr: any) {
-      logger.error(`[PasswordReset] SMTP dispatch failed: ${sendErr.message}`)
-    }
-  } else {
+  const result = await sendMail({
+    to: email,
+    subject: "Şifre Sıfırlama — Yönetim Paneli",
+    html: emailHtml,
+  })
+  if (result.ok) {
+    logger.info(`[PasswordReset] Reset email sent to: ${email}`)
+  } else if (!result.configured) {
     logger.info(
       "[PasswordReset] SMTP not configured. Use the reset link logged above or the preview in sent-emails/."
     )
+  } else {
+    logger.error(`[PasswordReset] SMTP dispatch failed (retry sonrası): ${result.error}`)
   }
 }
 

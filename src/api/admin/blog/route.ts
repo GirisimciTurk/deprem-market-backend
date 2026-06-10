@@ -25,30 +25,32 @@ const createSchema = z.object({
   related_products: z.array(z.string()).optional().nullable(),
 })
 
-/** GET /admin/blog?status=&q= — tüm yazılar (admin). */
+/** GET /admin/blog?status=&q=&limit=&offset= — tüm yazılar (admin). */
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const status = req.query.status as string | undefined
-  const q = (req.query.q as string | undefined)?.trim().toLowerCase()
+  const q = (req.query.q as string | undefined)?.trim()
+  const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100)
+  const offset = Math.max(Number(req.query.offset) || 0, 0)
 
   const filters: Record<string, unknown> = {}
   if (status && ["draft", "published"].includes(status)) filters.status = status
+  if (q) {
+    const like = `%${q}%`
+    filters.$or = [
+      { title: { $ilike: like } },
+      { category: { $ilike: like } },
+      { author: { $ilike: like } },
+    ]
+  }
 
   const blog: BlogModuleService = req.scope.resolve(BLOG_MODULE)
   const [posts, count] = await blog.listAndCountBlogPosts(filters, {
     order: { created_at: "DESC" },
-    take: 500,
+    skip: offset,
+    take: limit,
   })
 
-  const filtered = q
-    ? posts.filter(
-        (p) =>
-          p.title?.toLowerCase().includes(q) ||
-          p.category?.toLowerCase().includes(q) ||
-          p.author?.toLowerCase().includes(q)
-      )
-    : posts
-
-  return res.json({ posts: filtered, count })
+  return res.json({ posts, count, offset, limit })
 }
 
 /** POST /admin/blog — yeni yazı. */

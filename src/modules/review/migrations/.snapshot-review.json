@@ -250,6 +250,15 @@
           "expression": "CREATE INDEX IF NOT EXISTS \"IDX_product_review_customer_id\" ON \"product_review\" (\"customer_id\") WHERE deleted_at IS NULL"
         },
         {
+          "keyName": "IDX_product_review_status",
+          "columnNames": [],
+          "composite": false,
+          "constraint": false,
+          "primary": false,
+          "unique": false,
+          "expression": "CREATE INDEX IF NOT EXISTS \"IDX_product_review_status\" ON \"product_review\" (\"status\") WHERE deleted_at IS NULL"
+        },
+        {
           "keyName": "IDX_product_review_deleted_at",
           "columnNames": [],
           "composite": false,

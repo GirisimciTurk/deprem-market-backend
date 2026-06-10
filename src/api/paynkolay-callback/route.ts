@@ -31,10 +31,11 @@ export async function POST(
   const rawIp = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "unknown_ip"
   const clientIp = rawIp.split(",")[0].trim()
 
-  if (callbackLimiter.isLimited(clientIp)) {
+  if (await callbackLimiter.isLimited(clientIp)) {
     logger.warn(`Paynkolay Callback: Rate limit exceeded for IP: ${clientIp}`)
     const storefrontUrl = process.env.STOREFRONT_URL || "http://localhost:8000"
-    return res.redirect(`${storefrontUrl}/tr/checkout?step=payment&error=Too%20many%20requests.%20Please%20try%20again%20later.`)
+    const tooMany = encodeURIComponent("Çok fazla istek gönderildi. Lütfen biraz sonra tekrar deneyin.")
+    return res.redirect(`${storefrontUrl}/tr/checkout?step=payment&error=${tooMany}`)
   }
 
   const body = (req.body as any) || {}
