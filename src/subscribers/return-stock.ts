@@ -31,7 +31,7 @@ export default async function returnStockHandler({
 
     for (const ri of r.items ?? []) {
       if (!ri) continue
-      const variantId: string | undefined = ri.item?.variant_id
+      const variantId: string | null | undefined = ri.item?.variant_id
       // Teslim alınan miktar (yoksa talep edilen) kadar geri ekleme yapılmıştır.
       const qty = Number(ri.received_quantity ?? ri.quantity) || 0
       if (!variantId || qty <= 0) continue

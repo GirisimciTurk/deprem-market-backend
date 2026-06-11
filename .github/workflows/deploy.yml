@@ -1,0 +1,53 @@
+name: Deploy backend (VPS)
+
+# main'e her push'ta otomatik deploy. Manuel tetik için Actions > Run workflow.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'README.md'
+      - '.github/**'
+  workflow_dispatch:
+
+# Aynı anda tek deploy çalışsın (üst üste push'larda sıraya girer, iptal etmez).
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: SSH anahtarını hazırla
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Kodu sunucuya rsync'le
+        run: |
+          rsync -az --delete \
+            --exclude='.git' --exclude='.github' --exclude='node_modules' \
+            --exclude='.env' --exclude='.env.*' --exclude='.medusa' \
+            --exclude='dist' --exclude='sent-emails' --exclude='static' \
+            --exclude='coverage' --exclude='*.log' \
+            -e "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
+            ./ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/opt/deprem/deprem-market-backend/"
+
+      - name: Build + migrate + restart
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -se <<'REMOTE'
+          set -e
+          cd /opt/deprem/deploy
+          docker compose build backend
+          # NOT: prod build'de `medusa db:migrate` işini bitirince süreçten çıkmaz
+          # (Redis workflow-engine event loop'u açık tutar). Bu yüzden timeout ile
+          # sınırlandırıp tamamlanmasını bekliyoruz; çıkış kodunu yok sayıyoruz.
+          timeout 180 docker compose run --rm -T backend npx medusa db:migrate || true
+          docker compose up -d backend
+          docker compose ps backend
+          REMOTE
