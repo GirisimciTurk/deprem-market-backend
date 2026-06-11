@@ -40,14 +40,17 @@ jobs:
       - name: Build + migrate + restart
         run: |
           ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=40 \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -se <<'REMOTE'
           set -e
+          # Eşzamanlı deploy'ları sunucuda serileştir (compose proje yarışını / kaynak
+          # boğulmasını önler — örn. başka repo aynı anda deploy ederse sıraya girer).
+          exec 9>/tmp/deprem-deploy.lock; flock 9
           cd /opt/deprem/deploy
           docker compose build backend
           # NOT: prod build'de `medusa db:migrate` işini bitirince süreçten çıkmaz
-          # (Redis workflow-engine event loop'u açık tutar). Bu yüzden timeout ile
-          # sınırlandırıp tamamlanmasını bekliyoruz; çıkış kodunu yok sayıyoruz.
+          # (Redis workflow-engine event loop'u açık tutar). timeout ile sınırla, kodu yoksay.
           timeout 180 docker compose run --rm -T backend npx medusa db:migrate || true
-          docker compose up -d backend
+          docker compose up -d --no-deps backend
           docker compose ps backend
           REMOTE
