@@ -23,16 +23,18 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     take: limit,
   })
 
-  // Ödeme özeti (tüm alt-siparişler üzerinden).
+  // Ödeme özeti (tüm alt-siparişler üzerinden). Net = kazanç - iade.
   const all = await marketplace.listSellerOrders({ seller_id: sellerId }, { take: 1000 })
   const sum = (arr: any[], k: string) => arr.reduce((s, x) => s + Number(x[k] ?? 0), 0)
+  const net = (arr: any[]) => arr.reduce((s, x) => s + (Number(x.seller_earning ?? 0) - Number(x.returned_earning ?? 0)), 0)
   const pending = all.filter((o: any) => o.payout_status === "pending")
   const summary = {
     currency_code: (all[0] as any)?.currency_code || "try",
-    total_earning: sum(all, "seller_earning"),
+    total_earning: net(all),
     total_commission: sum(all, "commission_amount"),
-    pending_balance: sum(pending, "seller_earning"),
-    paid_total: sum(all.filter((o: any) => o.payout_status === "paid"), "seller_earning"),
+    total_returned: sum(all, "returned_subtotal"),
+    pending_balance: net(pending),
+    paid_total: net(all.filter((o: any) => o.payout_status === "paid")),
   }
 
   return res.json({ orders, count, offset, limit, summary })

@@ -38,20 +38,17 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     { seller_id: resolved.seller.id, created_at: { $gte: monthStart } },
     { take: 1000 }
   )
-  const month_earnings = monthOrders.reduce(
-    (s: number, o: any) => s + Number(o.seller_earning ?? 0),
-    0
-  )
+  // Net = seller_earning - returned_earning (iade düşülmüş).
+  const netSum = (arr: any[]) =>
+    arr.reduce((s: number, o: any) => s + (Number(o.seller_earning ?? 0) - Number(o.returned_earning ?? 0)), 0)
+  const month_earnings = netSum(monthOrders)
 
   // Ödenecek bakiye.
   const pendingPayout = await marketplace.listSellerOrders(
     { seller_id: resolved.seller.id, payout_status: "pending" },
     { take: 1000 }
   )
-  const pending_balance = pendingPayout.reduce(
-    (s: number, o: any) => s + Number(o.seller_earning ?? 0),
-    0
-  )
+  const pending_balance = netSum(pendingPayout)
 
   return res.json({
     product_count,

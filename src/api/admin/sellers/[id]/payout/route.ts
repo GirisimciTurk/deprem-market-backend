@@ -35,6 +35,10 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     pending.map((o: any) => ({ id: o.id, payout_status: "paid", paid_at: paidAt })) as any
   )
 
-  const paid_amount = pending.reduce((s: number, o: any) => s + Number(o.seller_earning ?? 0), 0)
+  // Net ödenen = seller_earning - returned_earning (iade düşülmüş).
+  const paid_amount = pending.reduce(
+    (s: number, o: any) => s + (Number(o.seller_earning ?? 0) - Number(o.returned_earning ?? 0)),
+    0
+  )
   return res.json({ paid_count: pending.length, paid_amount })
 }

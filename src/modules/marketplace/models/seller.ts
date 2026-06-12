@@ -1,6 +1,7 @@
 import { model } from "@medusajs/framework/utils"
 import SellerAdmin from "./seller-admin"
 import SellerOrder from "./seller-order"
+import SellerReturn from "./seller-return"
 
 /**
  * Satıcı (bayi) — pazar yerinde ürün satan iş ortağı.
@@ -26,6 +27,7 @@ const Seller = model.define("seller", {
   is_house: model.boolean().default(false),
   admins: model.hasMany(() => SellerAdmin, { mappedBy: "seller" }),
   orders: model.hasMany(() => SellerOrder, { mappedBy: "seller" }),
+  returns: model.hasMany(() => SellerReturn, { mappedBy: "seller" }),
 })
 
 export default Seller

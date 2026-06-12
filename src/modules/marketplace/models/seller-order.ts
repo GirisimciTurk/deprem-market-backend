@@ -24,6 +24,11 @@ const SellerOrder = model.define("seller_order", {
   // Satıcının net kazancı = subtotal - commission_amount.
   seller_earning: model.number().default(0),
   item_count: model.number().default(0),
+  // İade agregaları (order.return_received ile güncellenir). Net ödenecek =
+  // seller_earning - returned_earning.
+  returned_subtotal: model.number().default(0),
+  returned_commission: model.number().default(0),
+  returned_earning: model.number().default(0),
   // Kalem anlık görüntüsü: [{ product_id, title, variant_title, quantity, unit_price, line_total, thumbnail }]
   items: model.json().nullable(),
   // Satıcının kargolayabilmesi için teslim adresi anlık görüntüsü.

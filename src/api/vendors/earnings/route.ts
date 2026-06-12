@@ -21,6 +21,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   )
 
   const sum = (arr: any[], k: string) => arr.reduce((s, x) => s + Number(x[k] ?? 0), 0)
+  // Net kazanç = seller_earning - returned_earning (iade düşülmüş).
+  const net = (arr: any[]) => arr.reduce((s, x) => s + (Number(x.seller_earning ?? 0) - Number(x.returned_earning ?? 0)), 0)
   const pending = all.filter((o: any) => o.payout_status === "pending")
   const paid = all.filter((o: any) => o.payout_status === "paid")
 
@@ -28,9 +30,10 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     currency_code: (all[0] as any)?.currency_code || "try",
     gross_sales: sum(all, "subtotal"),
     total_commission: sum(all, "commission_amount"),
-    total_earning: sum(all, "seller_earning"),
-    pending_balance: sum(pending, "seller_earning"),
-    paid_total: sum(paid, "seller_earning"),
+    total_returned: sum(all, "returned_subtotal"),
+    total_earning: net(all),
+    pending_balance: net(pending),
+    paid_total: net(paid),
     order_count: all.length,
   }
 
@@ -41,7 +44,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     created_at: o.created_at,
     subtotal: o.subtotal,
     commission_amount: o.commission_amount,
-    seller_earning: o.seller_earning,
+    returned_earning: o.returned_earning,
+    seller_earning: Number(o.seller_earning ?? 0) - Number(o.returned_earning ?? 0),
     payout_status: o.payout_status,
     fulfillment_status: o.fulfillment_status,
   }))
