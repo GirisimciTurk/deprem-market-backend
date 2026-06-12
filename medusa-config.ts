@@ -161,5 +161,8 @@ module.exports = defineConfig({
     stock_movement: {
       resolve: "./src/modules/stock_movement",
     },
+    marketplace: {
+      resolve: "./src/modules/marketplace",
+    },
   },
 })

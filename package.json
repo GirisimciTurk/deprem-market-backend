@@ -22,6 +22,7 @@
     "setup:cargo": "medusa exec ./src/scripts/setup-cargo.ts",
     "setup:inventory": "medusa exec ./src/scripts/setup-inventory.ts",
     "setup:returns": "medusa exec ./src/scripts/setup-returns.ts",
+    "setup:marketplace": "medusa exec ./src/scripts/setup-marketplace.ts",
     "test:integration:http": "TEST_TYPE=integration:http NODE_OPTIONS=--experimental-vm-modules jest --silent=false --runInBand --forceExit",
     "test:integration:modules": "TEST_TYPE=integration:modules NODE_OPTIONS=--experimental-vm-modules jest --silent=false --runInBand --forceExit",
     "test:unit": "TEST_TYPE=unit NODE_OPTIONS=--experimental-vm-modules jest --silent --runInBand --forceExit"

@@ -44,6 +44,8 @@ const ADMIN_ONLY_MATCHERS = [
   "/admin/promotions*",
   "/admin/customers*",
   "/admin/reseller-applications*",
+  "/admin/sellers*",
+  "/admin/product-approvals*",
   "/admin/storefront-settings*",
   "/admin/order-refunds*",
 ]
@@ -89,6 +91,20 @@ export default defineMiddlewares({
       method: ["POST"],
       matcher: "/store/return-requests",
       middlewares: [authenticate("customer", ["session", "bearer"])],
+    },
+    {
+      // Satıcı (bayi) self-service kaydı: /auth/seller/emailpass/register'dan
+      // gelen kayıt token'ını kabul eder (henüz actor yok) → satıcı oluşturulur.
+      method: ["POST"],
+      matcher: "/vendors",
+      middlewares: [
+        authenticate("seller", ["bearer"], { allowUnregistered: true }),
+      ],
+    },
+    {
+      // Diğer tüm satıcı uçları giriş yapmış satıcı gerektirir.
+      matcher: "/vendors/*",
+      middlewares: [authenticate("seller", ["bearer", "session"])],
     },
     // RBAC: hassas admin uçları yalnızca 'admin' rolüne açık.
     ...ADMIN_ONLY_MATCHERS.map((matcher) => ({

@@ -1,0 +1,50 @@
+import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import { MARKETPLACE_MODULE } from "../../../modules/marketplace"
+import MarketplaceModuleService from "../../../modules/marketplace/service"
+import { resolveSeller } from "../_lib/resolve-seller"
+
+/**
+ * GET /vendors/earnings — satıcının kazanç özeti.
+ * Tutarlar minor unit (kuruş). Bakiye = ödenmemiş (pending) alt-siparişlerin
+ * seller_earning toplamı.
+ */
+export async function GET(req: MedusaRequest, res: MedusaResponse) {
+  const resolved = await resolveSeller(req)
+  if (!resolved) return res.status(401).json({ message: "Yetkisiz." })
+
+  const marketplace: MarketplaceModuleService = req.scope.resolve(MARKETPLACE_MODULE)
+  // Özet için tüm alt-siparişleri çek (satıcı başına sayı makul; gerekirse
+  // ileride DB-agregasyonuna geçilir).
+  const all = await marketplace.listSellerOrders(
+    { seller_id: resolved.seller.id },
+    { order: { created_at: "DESC" }, take: 1000 }
+  )
+
+  const sum = (arr: any[], k: string) => arr.reduce((s, x) => s + Number(x[k] ?? 0), 0)
+  const pending = all.filter((o: any) => o.payout_status === "pending")
+  const paid = all.filter((o: any) => o.payout_status === "paid")
+
+  const summary = {
+    currency_code: (all[0] as any)?.currency_code || "try",
+    gross_sales: sum(all, "subtotal"),
+    total_commission: sum(all, "commission_amount"),
+    total_earning: sum(all, "seller_earning"),
+    pending_balance: sum(pending, "seller_earning"),
+    paid_total: sum(paid, "seller_earning"),
+    order_count: all.length,
+  }
+
+  // Son 20 alt-sipariş (kazanç dökümü)
+  const recent = all.slice(0, 20).map((o: any) => ({
+    id: o.id,
+    display_id: o.display_id,
+    created_at: o.created_at,
+    subtotal: o.subtotal,
+    commission_amount: o.commission_amount,
+    seller_earning: o.seller_earning,
+    payout_status: o.payout_status,
+    fulfillment_status: o.fulfillment_status,
+  }))
+
+  return res.json({ summary, recent })
+}
