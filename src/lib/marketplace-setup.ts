@@ -2,6 +2,7 @@ import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
 import { MARKETPLACE_MODULE } from "../modules/marketplace"
 import MarketplaceModuleService from "../modules/marketplace/service"
 import { splitOrder } from "./split-order"
+import { generateInvoicesForOrder } from "./einvoice/generate"
 
 const HOUSE_HANDLE = "deprem-market"
 
@@ -11,6 +12,7 @@ export type MarketplaceSetupResult = {
   products_linked: number
   orders_scanned: number
   seller_orders_created: number
+  invoices_created: number
 }
 
 /**
@@ -78,10 +80,14 @@ export async function runMarketplaceSetup(container: any): Promise<MarketplaceSe
     pagination: { take: 10000 } as any,
   })
   let split = 0
+  let invoices = 0
   for (const o of orders as any[]) {
     split += await splitOrder(container, o.id)
+    invoices += await generateInvoicesForOrder(container, o.id)
   }
-  logger.info(`[marketplace-setup] ${orders.length} sipariş tarandı, ${split} yeni alt-sipariş.`)
+  logger.info(
+    `[marketplace-setup] ${orders.length} sipariş tarandı, ${split} yeni alt-sipariş, ${invoices} taslak fatura.`
+  )
 
   return {
     house_seller_id: house.id,
@@ -89,5 +95,6 @@ export async function runMarketplaceSetup(container: any): Promise<MarketplaceSe
     products_linked: toLink.length,
     orders_scanned: orders.length,
     seller_orders_created: split,
+    invoices_created: invoices,
   }
 }

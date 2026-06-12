@@ -164,5 +164,8 @@ module.exports = defineConfig({
     marketplace: {
       resolve: "./src/modules/marketplace",
     },
+    invoicing: {
+      resolve: "./src/modules/invoicing",
+    },
   },
 })
