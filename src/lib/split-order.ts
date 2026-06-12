@@ -4,8 +4,10 @@ import MarketplaceModuleService from "../modules/marketplace/service"
 
 /**
  * Bir müşteri siparişini satıcı bazında alt-siparişlere (seller_order) böler ve
- * komisyonu anlık hesaplar. İdempotent: sipariş zaten bölünmüşse 0 döner.
- * order.placed subscriber'ı ve test/yeniden-işleme script'leri bunu paylaşır.
+ * komisyonu KALEM bazında hesaplar: her ürünün komisyon oranı, ürünün kategorisine
+ * ait kategori-komisyon kuralı varsa o orandan; yoksa satıcının sabit oranından
+ * (house = %0) gelir. seller_order.commission_rate efektif (harmanlanmış) orandır.
+ * İdempotent. order.placed subscriber'ı ve setup/test bunu paylaşır.
  *
  * @returns oluşturulan seller_order sayısı
  */
@@ -34,56 +36,85 @@ export async function splitOrder(container: any, orderId: string): Promise<numbe
   const items: any[] = order.items || []
   if (items.length === 0) return 0
 
+  // Kategori → komisyon oranı haritası.
+  const rules = await marketplace.listCommissionRules({}, { take: 1000 })
+  const categoryRate = new Map<string, number>(
+    (rules as any[]).map((r) => [r.category_id, Number(r.rate ?? 0)])
+  )
+
+  // Ürün → { seller, is_house, sellerRate, categories }
   const productIds = [...new Set(items.map((it) => it.product_id).filter(Boolean))]
-  const productSeller = new Map<string, { id: string; commission_rate: number }>()
+  const productInfo = new Map<
+    string,
+    { sellerId: string; isHouse: boolean; sellerRate: number; categoryIds: string[] }
+  >()
   if (productIds.length > 0) {
     const { data: products } = await query.graph({
       entity: "product",
-      fields: ["id", "seller.id", "seller.commission_rate"],
+      fields: ["id", "seller.id", "seller.commission_rate", "seller.is_house", "categories.id"],
       filters: { id: productIds },
     })
     for (const p of products as any[]) {
       if (p.seller?.id) {
-        productSeller.set(p.id, {
-          id: p.seller.id,
-          commission_rate: Number(p.seller.commission_rate ?? 0),
+        productInfo.set(p.id, {
+          sellerId: p.seller.id,
+          isHouse: !!p.seller.is_house,
+          sellerRate: Number(p.seller.commission_rate ?? 0),
+          categoryIds: (p.categories || []).map((c: any) => c.id),
         })
       }
     }
   }
 
-  let house: { id: string; commission_rate: number } | null = null
+  // Satıcısı belirsiz kalemler için house.
   const [houseSeller] = await marketplace.listSellers({ is_house: true }, { take: 1 })
-  if (houseSeller) {
-    house = { id: houseSeller.id, commission_rate: Number(houseSeller.commission_rate ?? 0) }
+  const house = houseSeller
+    ? { sellerId: (houseSeller as any).id, isHouse: true, sellerRate: 0, categoryIds: [] as string[] }
+    : null
+
+  // Bir kalem için efektif komisyon oranı: house→0; kategori kuralı varsa (birden
+  // çoksa en yükseği); yoksa satıcı sabit oranı.
+  const rateForItem = (info: { isHouse: boolean; sellerRate: number; categoryIds: string[] }) => {
+    if (info.isHouse) return 0
+    const catRates = info.categoryIds.map((c) => categoryRate.get(c)).filter((r): r is number => r != null)
+    if (catRates.length > 0) return Math.max(...catRates)
+    return info.sellerRate
   }
 
   const num = (v: any) => Number(v ?? 0)
-  const groups = new Map<string, { commission_rate: number; items: any[] }>()
+  // Satıcıya göre grupla; her kaleme efektif oranı iliştir.
+  const groups = new Map<string, { items: { it: any; rate: number }[] }>()
   for (const it of items) {
-    const s = (it.product_id && productSeller.get(it.product_id)) || house
-    if (!s) {
+    const info = (it.product_id && productInfo.get(it.product_id)) || house
+    if (!info) {
       logger.warn(`[splitOrder] ${orderId}: kalem ${it.id} için satıcı yok, atlanıyor.`)
       continue
     }
-    if (!groups.has(s.id)) groups.set(s.id, { commission_rate: s.commission_rate, items: [] })
-    groups.get(s.id)!.items.push(it)
+    if (!groups.has(info.sellerId)) groups.set(info.sellerId, { items: [] })
+    groups.get(info.sellerId)!.items.push({ it, rate: rateForItem(info) })
   }
   if (groups.size === 0) return 0
 
   const currency = order.currency_code || "try"
   const sellerOrders = [...groups.entries()].map(([sellerId, g]) => {
-    const snapshot = g.items.map((it) => ({
-      product_id: it.product_id,
-      title: it.title,
-      variant_title: it.variant_title,
-      quantity: num(it.quantity),
-      unit_price: num(it.unit_price),
-      line_total: num(it.unit_price) * num(it.quantity),
-      thumbnail: it.thumbnail,
-    }))
+    const snapshot = g.items.map(({ it, rate }) => {
+      const line_total = num(it.unit_price) * num(it.quantity)
+      return {
+        product_id: it.product_id,
+        title: it.title,
+        variant_title: it.variant_title,
+        quantity: num(it.quantity),
+        unit_price: num(it.unit_price),
+        line_total,
+        commission_rate: rate,
+        commission_amount: Math.round((line_total * rate) / 100),
+        thumbnail: it.thumbnail,
+      }
+    })
     const subtotal = snapshot.reduce((s, x) => s + x.line_total, 0)
-    const commission_amount = Math.round((subtotal * g.commission_rate) / 100)
+    const commission_amount = snapshot.reduce((s, x) => s + x.commission_amount, 0)
+    // Efektif (harmanlanmış) oran — gösterim için.
+    const effectiveRate = subtotal > 0 ? Math.round((commission_amount / subtotal) * 100 * 100) / 100 : 0
     return {
       seller_id: sellerId,
       order_id: orderId,
@@ -91,7 +122,7 @@ export async function splitOrder(container: any, orderId: string): Promise<numbe
       customer_email: order.email || null,
       currency_code: currency,
       subtotal,
-      commission_rate: g.commission_rate,
+      commission_rate: effectiveRate,
       commission_amount,
       seller_earning: subtotal - commission_amount,
       item_count: snapshot.reduce((s, x) => s + x.quantity, 0),
