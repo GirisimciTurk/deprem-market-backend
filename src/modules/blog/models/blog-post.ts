@@ -15,6 +15,9 @@ const BlogPost = model.define("blog_post", {
   status: model.enum(["draft", "published"]).default("draft").index(),
   cover_image: model.text().nullable(),
   related_products: model.json().nullable(),
+  // Locale-başına çeviriler: { en: { title, summary, content } }. Varsayılan (tr)
+  // alanları ana kolonlarda kalır; storefront locale != tr ise buradan overlay eder.
+  translations: model.json().nullable(),
   published_at: model.dateTime().nullable(),
 })
 

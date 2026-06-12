@@ -20,6 +20,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       category: p.category || "",
       related_products: p.related_products || [],
       content: p.content || "",
+      translations: p.translations || null,
     },
   })
 }

@@ -14,6 +14,8 @@ function toStorefront(p: any) {
     category: p.category || "",
     related_products: p.related_products || [],
     content: p.content || "",
+    // Locale-başına çeviriler (storefront locale != tr ise overlay eder).
+    translations: p.translations || null,
   }
 }
 

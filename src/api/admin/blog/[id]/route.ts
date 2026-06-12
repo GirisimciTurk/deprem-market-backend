@@ -13,6 +13,17 @@ const updateSchema = z.object({
   status: z.enum(["draft", "published"]).optional(),
   cover_image: z.string().optional().nullable(),
   related_products: z.array(z.string()).optional().nullable(),
+  translations: z
+    .record(
+      z.string(),
+      z.object({
+        title: z.string().optional(),
+        summary: z.string().optional().nullable(),
+        content: z.string().optional(),
+      })
+    )
+    .optional()
+    .nullable(),
 })
 
 /** POST /admin/blog/:id — güncelle. */

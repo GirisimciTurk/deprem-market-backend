@@ -169,7 +169,7 @@ export async function sendCargoStatusEmail(
 
   // ÖNCE SMTP ile gönder, SONRA önizleme yaz. (sent-emails/ proje içinde
   // olduğundan dosya yazımı dev watcher'ı tetikleyebilir.) Gönderim ortak pooled
-  // mailer üzerinden + geçici hatalarda retry ile yapılır.
+  // mailer üzerinden + geçici hatalarda retry ile yapılır.                                                                                                                                                                                                                                                                                                                                                                       11111
   const result = await sendMail({
     to: order.email || undefined,
     subject: copy.subject(String(displayNo)),

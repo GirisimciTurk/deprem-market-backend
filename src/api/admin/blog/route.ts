@@ -23,6 +23,18 @@ const createSchema = z.object({
   status: z.enum(["draft", "published"]).optional(),
   cover_image: z.string().optional().nullable(),
   related_products: z.array(z.string()).optional().nullable(),
+  // Locale-başına çeviriler: { en: { title?, summary?, content? } }
+  translations: z
+    .record(
+      z.string(),
+      z.object({
+        title: z.string().optional(),
+        summary: z.string().optional().nullable(),
+        content: z.string().optional(),
+      })
+    )
+    .optional()
+    .nullable(),
 })
 
 /** GET /admin/blog?status=&q=&limit=&offset= — tüm yazılar (admin). */
@@ -73,6 +85,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     status,
     cover_image: data.cover_image ?? null,
     related_products: (data.related_products ?? null) as any,
+    translations: (data.translations ?? null) as any,
     published_at: status === "published" ? new Date() : null,
   })
 
