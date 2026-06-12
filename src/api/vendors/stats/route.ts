@@ -43,12 +43,17 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     arr.reduce((s: number, o: any) => s + (Number(o.seller_earning ?? 0) - Number(o.returned_earning ?? 0)), 0)
   const month_earnings = netSum(monthOrders)
 
-  // Ödenecek bakiye.
+  // Bakiyeler: pending (hakediş bekleyen) + eligible (ödenebilir).
   const pendingPayout = await marketplace.listSellerOrders(
     { seller_id: resolved.seller.id, payout_status: "pending" },
     { take: 1000 }
   )
+  const eligiblePayout = await marketplace.listSellerOrders(
+    { seller_id: resolved.seller.id, payout_status: "eligible" },
+    { take: 1000 }
+  )
   const pending_balance = netSum(pendingPayout)
+  const eligible_balance = netSum(eligiblePayout)
 
   return res.json({
     product_count,
@@ -56,6 +61,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     pending_order_count: pendingCount,
     month_earnings,
     pending_balance,
+    eligible_balance,
     currency_code: (monthOrders[0] as any)?.currency_code || "try",
     status: resolved.seller.status,
   })

@@ -27,13 +27,16 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const all = await marketplace.listSellerOrders({ seller_id: sellerId }, { take: 1000 })
   const sum = (arr: any[], k: string) => arr.reduce((s, x) => s + Number(x[k] ?? 0), 0)
   const net = (arr: any[]) => arr.reduce((s, x) => s + (Number(x.seller_earning ?? 0) - Number(x.returned_earning ?? 0)), 0)
+  // pending = henüz hakediş etmedi (bekliyor); eligible = ödenebilir; paid = ödendi.
   const pending = all.filter((o: any) => o.payout_status === "pending")
+  const eligible = all.filter((o: any) => o.payout_status === "eligible")
   const summary = {
     currency_code: (all[0] as any)?.currency_code || "try",
     total_earning: net(all),
     total_commission: sum(all, "commission_amount"),
     total_returned: sum(all, "returned_subtotal"),
-    pending_balance: net(pending),
+    pending_balance: net(pending), // hakediş bekleyen
+    eligible_balance: net(eligible), // ödenebilir (hakediş etti)
     paid_total: net(all.filter((o: any) => o.payout_status === "paid")),
   }
 

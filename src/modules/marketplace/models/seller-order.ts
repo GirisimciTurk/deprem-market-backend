@@ -34,7 +34,11 @@ const SellerOrder = model.define("seller_order", {
   // Satıcının kargolayabilmesi için teslim adresi anlık görüntüsü.
   shipping_address: model.json().nullable(),
   fulfillment_status: model.enum(["pending", "fulfilled", "canceled"]).default("pending").index(),
-  payout_status: model.enum(["pending", "paid"]).default("pending").index(),
+  // Hakediş/ödeme döngüsü: pending (kargolanmadı ya da bekleme süresinde) →
+  // eligible (hakediş etti, ödenebilir) → paid (ödendi).
+  payout_status: model.enum(["pending", "eligible", "paid"]).default("pending").index(),
+  // Kargolandıktan HAKEDIS_DAYS gün sonrası — bu tarihten sonra eligible olur.
+  eligible_at: model.dateTime().nullable(),
   paid_at: model.dateTime().nullable(),
   fulfilled_at: model.dateTime().nullable(),
   note: model.text().nullable(),

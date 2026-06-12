@@ -10,8 +10,9 @@ const schema = z.object({
 
 /**
  * POST /admin/sellers/:id/payout  { order_ids?: string[] }
- * Manuel payout: satıcının (belirtilen ya da tüm bekleyen) alt-siparişlerini
- * "ödendi" olarak işaretler. Gerçek banka transferi sistem dışında yapılır.
+ * Manuel payout: satıcının HAKEDİŞ ETMİŞ (eligible) alt-siparişlerini "ödendi"
+ * yapar. Henüz hakediş etmemiş (pending) kayıtlar ödenemez. Banka transferi
+ * sistem dışında yapılır.
  */
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const sellerId = req.params.id
@@ -22,12 +23,12 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
   const marketplace: MarketplaceModuleService = req.scope.resolve(MARKETPLACE_MODULE)
 
-  const filters: Record<string, unknown> = { seller_id: sellerId, payout_status: "pending" }
+  const filters: Record<string, unknown> = { seller_id: sellerId, payout_status: "eligible" }
   if (parsed.data.order_ids?.length) filters.id = parsed.data.order_ids
 
   const pending = await marketplace.listSellerOrders(filters, { take: 1000 })
   if (pending.length === 0) {
-    return res.json({ paid_count: 0, paid_amount: 0, message: "Ödenecek bekleyen kayıt yok." })
+    return res.json({ paid_count: 0, paid_amount: 0, message: "Hakediş etmiş (ödenebilir) kayıt yok." })
   }
 
   const paidAt = new Date()
