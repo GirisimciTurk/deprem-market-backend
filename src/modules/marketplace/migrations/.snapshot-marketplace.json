@@ -1803,12 +1803,29 @@
           "comment": null,
           "enumItems": [
             "requested",
-            "received"
+            "received",
+            "rejected"
           ],
           "mappedType": "enum"
         },
         "reason": {
           "name": "reason",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "text"
+        },
+        "reject_reason": {
+          "name": "reject_reason",
           "type": "text",
           "unsigned": false,
           "autoincrement": false,
@@ -1889,6 +1906,22 @@
         },
         "received_at": {
           "name": "received_at",
+          "type": "timestamptz",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 6,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "datetime"
+        },
+        "rejected_at": {
+          "name": "rejected_at",
           "type": "timestamptz",
           "unsigned": false,
           "autoincrement": false,

@@ -88,6 +88,74 @@ async function groupReturnBySeller(container: any, returnId: string, useReceived
   return { ret, orderId, groups }
 }
 
+export type RequestedItem = {
+  id: string // order line item id
+  quantity: number
+  reason_id?: string | null
+  note?: string | null
+}
+
+export type SellerItemGroup = {
+  seller_id: string | null
+  seller_order_id: string | null
+  items: RequestedItem[]
+}
+
+/**
+ * Bir iade talebinin order line item'larını satıcıya göre gruplar (iade
+ * OLUŞTURULURKEN her satıcı için ayrı native return açmak için). Her order kalemi
+ * product_id ile siparişin seller_order'larına eşlenir. Eşleşmeyen kalemler
+ * tek bir `seller_id:null` grubuna düşer (admin-yönetimli fallback return).
+ */
+export async function groupRequestedItemsBySeller(
+  container: any,
+  orderId: string,
+  requestedItems: RequestedItem[]
+): Promise<SellerItemGroup[]> {
+  const query = container.resolve(ContainerRegistrationKeys.QUERY)
+  const marketplace: MarketplaceModuleService = container.resolve(MARKETPLACE_MODULE)
+
+  // order line item id → product_id
+  const { data: orders } = await query.graph({
+    entity: "order",
+    fields: ["id", "items.id", "items.product_id"],
+    filters: { id: orderId },
+  })
+  const order = orders?.[0] as any
+  const lineToProduct = new Map<string, string>()
+  for (const it of (order?.items as any[]) || []) {
+    if (it?.id && it?.product_id) lineToProduct.set(String(it.id), String(it.product_id))
+  }
+
+  // product_id → seller_order
+  const sellerOrders = await marketplace.listSellerOrders({ order_id: orderId }, { take: 100 })
+  const productToSeller = new Map<string, { seller_id: string; seller_order_id: string }>()
+  for (const so of sellerOrders as any[]) {
+    for (const it of (so.items as any[]) || []) {
+      if (it?.product_id)
+        productToSeller.set(String(it.product_id), { seller_id: so.seller_id, seller_order_id: so.id })
+    }
+  }
+
+  // groupKey (seller_order_id | "_unassigned") → group
+  const groups = new Map<string, SellerItemGroup>()
+  for (const ri of requestedItems) {
+    const productId = lineToProduct.get(String(ri.id))
+    const match = productId ? productToSeller.get(productId) : undefined
+    const key = match?.seller_order_id ?? "_unassigned"
+    if (!groups.has(key)) {
+      groups.set(key, {
+        seller_id: match?.seller_id ?? null,
+        seller_order_id: match?.seller_order_id ?? null,
+        items: [],
+      })
+    }
+    groups.get(key)!.items.push(ri)
+  }
+
+  return [...groups.values()]
+}
+
 /**
  * order.return_requested: satıcı(lar) için "requested" seller_return kayıtları
  * oluşturur (satıcı panelinde görünmesi için). seller_order'a DOKUNMAZ.

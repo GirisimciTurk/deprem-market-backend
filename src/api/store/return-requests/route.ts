@@ -5,6 +5,7 @@ import {
 import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
 import { createAndCompleteReturnOrderWorkflow } from "@medusajs/core-flows"
 import { returnRequestLimiter, enforceRateLimit } from "../../../lib/rate-limiter"
+import { groupRequestedItemsBySeller } from "../../../lib/process-return"
 
 type ReturnItemInput = {
   id: string // order line item id
@@ -16,10 +17,12 @@ type ReturnItemInput = {
 /**
  * POST /store/return-requests
  *
- * Giriş yapmış müşterinin kendi siparişi için iade talebi oluşturur. Native Medusa
- * `createAndCompleteReturnOrderWorkflow`'u çağırır → iade kaydı "requested" olur,
- * `order.return_requested` event'i ile müşteriye "İade Talebiniz Alındı" maili gider.
- * Admin panelden teslim alındığında stok otomatik geri eklenir.
+ * Giriş yapmış müşterinin kendi siparişi için iade talebi oluşturur. Kalemler
+ * SATICIYA göre bölünür ve her satıcı için AYRI native return açılır
+ * (`createAndCompleteReturnOrderWorkflow` her grup için) → her return "requested"
+ * olur, `order.return_requested` event'i ile müşteriye mail gider ve ilgili satıcı
+ * için seller_return oluşur. Satıcı kendi panelinden teslim alıp onaylar (stok geri
+ * eklenir + otomatik para iadesi) veya reddeder.
  *
  * Body: { order_id, items: [{ id, quantity, reason_id? }], note? }
  *
@@ -103,36 +106,45 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
   })
   const locationId = stockLocations?.[0]?.id
 
-  // 4. Native iade workflow'unu çalıştır.
-  try {
-    const { result } = await createAndCompleteReturnOrderWorkflow(req.scope).run({
-      input: {
-        order_id: orderId,
-        items: items.map((i) => ({
-          id: i.id,
-          quantity: Number(i.quantity),
-          reason_id: i.reason_id || undefined,
-          note: i.note || undefined,
-        })),
-        return_shipping: { option_id: returnOption.id },
-        location_id: locationId,
-        note: body.note || undefined,
-      } as any,
-    })
+  // 4. Kalemleri satıcıya göre böl → her satıcı için AYRI native return aç.
+  // (Çok-satıcılı iadede tek return'ü her satıcının ayrı teslim alması native
+  // confirm akışını kilitlerdi; satıcı başına return bunu çözer.)
+  const groups = await groupRequestedItemsBySeller(req.scope, orderId, items)
+  const orderModule = req.scope.resolve(Modules.ORDER)
+  const created: any[] = []
 
-    // createAndComplete location_id'yi yalnız iade fulfillment'ına yazıyor; return
-    // KAYDININ location_id'sini ayrıca set etmezsek admin "teslim al/onayla" (confirm-receive)
-    // "Cannot receive the Return at location null" ile patlıyor ve stok geri eklenmiyor.
-    if (locationId && (result as any)?.id) {
-      try {
-        const orderModule = req.scope.resolve(Modules.ORDER)
-        await orderModule.updateReturns((result as any).id, { location_id: locationId })
-      } catch {
-        // location set edilemese bile iade oluştu; admin elle lokasyon seçebilir.
+  try {
+    for (const group of groups) {
+      const { result } = await createAndCompleteReturnOrderWorkflow(req.scope).run({
+        input: {
+          order_id: orderId,
+          items: group.items.map((i) => ({
+            id: i.id,
+            quantity: Number(i.quantity),
+            reason_id: i.reason_id || undefined,
+            note: i.note || undefined,
+          })),
+          return_shipping: { option_id: returnOption.id },
+          location_id: locationId,
+          note: body.note || undefined,
+        } as any,
+      })
+
+      // createAndComplete location_id'yi yalnız iade fulfillment'ına yazıyor; return
+      // KAYDININ location_id'sini ayrıca set etmezsek teslim-al (confirm-receive)
+      // "Cannot receive the Return at location null" ile patlıyor ve stok geri eklenmiyor.
+      if (locationId && (result as any)?.id) {
+        try {
+          await orderModule.updateReturns((result as any).id, { location_id: locationId })
+        } catch {
+          // location set edilemese bile iade oluştu; admin elle lokasyon seçebilir.
+        }
       }
+      created.push(result)
     }
 
-    return res.status(200).json({ return: result })
+    // Geriye dönük uyumluluk: tek return varsa `return` da döndür.
+    return res.status(200).json({ returns: created, return: created[0] ?? null })
   } catch (e: any) {
     return res
       .status(400)

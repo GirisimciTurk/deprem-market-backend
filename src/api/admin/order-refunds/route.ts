@@ -1,10 +1,6 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
-import {
-  capturePaymentWorkflow,
-  refundPaymentWorkflow,
-} from "@medusajs/medusa/core-flows"
 import { z } from "zod"
+import { refundOrderAmount, RefundError } from "../../../lib/refund-order"
 
 const schema = z.object({
   order_id: z.string().min(1),
@@ -17,8 +13,9 @@ const schema = z.object({
  * POST /admin/order-refunds  { order_id, amount?, reason? }
  *
  * Tek-tık para iadesi: siparişin ödemesini bulur, gerekiyorsa önce capture eder,
- * sonra (kalan) tutarı iade eder. (/admin/orders/:id/* yolu Medusa core'a ait
- * olduğu için custom route burada ayrı path'te.)
+ * sonra (kalan) tutarı iade eder. Çekirdek mantık `lib/refund-order.ts`'te (satıcı
+ * iade onayındaki otomatik iade de aynı lib'i kullanır). Burada strict=true →
+ * tutar kalan bakiyeyi aşarsa hata.
  */
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const parsed = schema.safeParse(req.body)
@@ -26,68 +23,23 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     return res.status(400).json({ message: "Geçersiz iade isteği." })
   }
   const { order_id, amount: requested } = parsed.data
-
-  const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
   const logger = req.scope.resolve("logger")
 
-  const { data: orders } = await query.graph({
-    entity: "order",
-    fields: [
-      "id",
-      "payment_collections.payments.id",
-      "payment_collections.payments.amount",
-      "payment_collections.payments.captured_at",
-      "payment_collections.payments.canceled_at",
-      "payment_collections.payments.refunds.amount",
-    ],
-    filters: { id: order_id },
-  })
-  const order = orders?.[0]
-  if (!order) return res.status(404).json({ message: "Sipariş bulunamadı." })
-
-  const payments = (order.payment_collections || []).flatMap(
-    (pc: any) => pc.payments || []
-  )
-  const payment = payments.find((p: any) => !p.canceled_at)
-  if (!payment) {
-    return res.status(400).json({ message: "Bu siparişe ait ödeme bulunamadı." })
-  }
-
-  if (!payment.captured_at) {
-    try {
-      await capturePaymentWorkflow(req.scope).run({
-        input: { payment_id: payment.id },
-      })
-    } catch (e: any) {
-      logger.error(`Refund: capture başarısız ${payment.id}: ${e?.message}`)
-      return res
-        .status(400)
-        .json({ message: "Ödeme tahsil edilemedi (capture). İade yapılamadı." })
-    }
-  }
-
-  const captured = Number(payment.amount || 0)
-  const alreadyRefunded = (payment.refunds || []).reduce(
-    (s: number, r: any) => s + Number(r.amount || 0),
-    0
-  )
-  const refundable = captured - alreadyRefunded
-  const amount = requested ?? refundable
-
-  if (amount <= 0 || amount > refundable) {
-    return res
-      .status(400)
-      .json({ message: `Geçersiz iade tutarı. İade edilebilir kalan: ${refundable}` })
-  }
-
   try {
-    await refundPaymentWorkflow(req.scope).run({
-      input: { payment_id: payment.id, amount } as any,
-    })
+    const result = await refundOrderAmount(req.scope, order_id, requested, { strict: true })
+    if (!result.refunded) {
+      const msg =
+        result.skipped === "no_payment"
+          ? "Bu siparişe ait ödeme bulunamadı."
+          : "İade edilecek tutar yok."
+      return res.status(400).json({ message: msg })
+    }
+    return res.json({ success: true, payment_id: result.payment_id, refunded: result.refunded })
   } catch (e: any) {
-    logger.error(`Refund başarısız ${payment.id}: ${e?.message}`)
+    if (e instanceof RefundError) {
+      return res.status(400).json({ message: e.message })
+    }
+    logger.error(`Refund başarısız (${order_id}): ${e?.message}`)
     return res.status(400).json({ message: e?.message || "İade başarısız." })
   }
-
-  return res.json({ success: true, payment_id: payment.id, refunded: amount })
 }

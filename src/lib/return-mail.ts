@@ -1,7 +1,7 @@
 import { sendMail } from "./mailer"
 import { writeEmailPreview } from "./email-preview"
 
-export type ReturnStatus = "requested" | "received"
+export type ReturnStatus = "requested" | "received" | "rejected"
 
 type StatusCopy = {
   subject: (no: string) => string
@@ -31,6 +31,15 @@ const COPY: Record<ReturnStatus, StatusCopy> = {
     accent: "#16a34a",
     filePrefix: "return-received",
   },
+  rejected: {
+    subject: (no) => `İade Talebiniz Hakkında (#${no})`,
+    heading: "İade Talebiniz Reddedildi",
+    emoji: "⚠️",
+    intro:
+      "Üzgünüz, iade talebiniz satıcı tarafından reddedilmiştir. Bu kararla ilgili itirazınız varsa lütfen aşağıdaki e-posta adresinden bizimle iletişime geçin; ekibimiz durumu inceleyecektir.",
+    accent: "#dc2626",
+    filePrefix: "return-rejected",
+  },
 }
 
 /**
@@ -43,7 +52,8 @@ const COPY: Record<ReturnStatus, StatusCopy> = {
 export async function sendReturnStatusEmail(
   container: any,
   returnId: string,
-  status: ReturnStatus
+  status: ReturnStatus,
+  opts: { reason?: string | null } = {}
 ) {
   const logger = container.resolve("logger")
   const query = container.resolve("query")
@@ -84,6 +94,13 @@ export async function sendReturnStatusEmail(
 
   const displayNo = order.display_id || order.id.substring(0, 8)
 
+  const reasonHtml =
+    status === "rejected" && opts.reason
+      ? `<div style="background-color:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:14px;margin-bottom:24px;font-size:14px;color:#991b1b;line-height:20px;">
+           <strong>Ret Gerekçesi:</strong> ${opts.reason}
+         </div>`
+      : ""
+
   const emailHtml = `
     <!DOCTYPE html>
     <html>
@@ -100,6 +117,7 @@ export async function sendReturnStatusEmail(
             <td style="padding: 40px 30px;">
               <h2 style="font-size: 20px; font-weight: 700; margin-top: 0; margin-bottom: 15px; text-align: center; color: ${copy.accent};">${copy.emoji} ${copy.heading}</h2>
               <p style="font-size: 15px; line-height: 24px; color: #475569; text-align: center; margin-bottom: 30px;">${copy.intro}</p>
+              ${reasonHtml}
               <h3 style="font-size: 15px; font-weight: 700; color: #0f172a; border-bottom: 2px solid #f1f5f9; padding-bottom: 6px; margin-bottom: 12px;">İade Edilen Ürünler (#${displayNo})</h3>
               <ul style="list-style-type: none; padding-left: 0; margin-top: 0; margin-bottom: 30px;">${itemsHtml || '<li style="font-size:14px;color:#475569;">—</li>'}</ul>
               <div style="background-color: #f1f5f9; border-radius: 8px; padding: 15px; margin-bottom: 10px; font-size: 13px; color: #475569; line-height: 20px; text-align: center;">

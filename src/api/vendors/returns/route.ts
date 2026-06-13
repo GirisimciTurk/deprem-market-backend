@@ -13,7 +13,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const status = req.query.status as string | undefined
 
   const filters: Record<string, unknown> = { seller_id: resolved.seller.id }
-  if (status && ["requested", "received"].includes(status)) filters.status = status
+  if (status && ["requested", "received", "rejected"].includes(status)) filters.status = status
 
   const marketplace: MarketplaceModuleService = req.scope.resolve(MARKETPLACE_MODULE)
   const [returns, count] = await marketplace.listAndCountSellerReturns(filters, {
