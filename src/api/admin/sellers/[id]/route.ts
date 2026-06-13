@@ -1,4 +1,5 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { z } from "zod"
 import { MARKETPLACE_MODULE } from "../../../../modules/marketplace"
 import MarketplaceModuleService from "../../../../modules/marketplace/service"
@@ -8,12 +9,112 @@ const updateSchema = z.object({
   legal_name: z.string().optional().nullable(),
   email: z.string().email().optional().nullable(),
   phone: z.string().optional().nullable(),
+  description: z.string().optional().nullable(),
+  logo: z.string().optional().nullable(),
   tax_number: z.string().optional().nullable(),
   iban: z.string().optional().nullable(),
   account_holder: z.string().optional().nullable(),
+  default_carrier: z.enum(["aras", "yurtici", "mng", "ptt"]).optional().nullable(),
   commission_rate: z.number().min(0).max(100).optional(),
   status: z.enum(["pending", "active", "suspended"]).optional(),
 })
+
+const sumField = (arr: any[], k: string) => arr.reduce((s, x) => s + Number(x[k] ?? 0), 0)
+const netEarning = (arr: any[]) =>
+  arr.reduce((s, x) => s + (Number(x.seller_earning ?? 0) - Number(x.returned_earning ?? 0)), 0)
+
+/**
+ * GET /admin/sellers/:id
+ * Bir satıcının TÜM yönetim verisi tek çağrıda: profil + ürün/sipariş/değerlendirme/
+ * iade özetleri + ödeme (payout) bakiyeleri + ürün listesi + son iadeler.
+ * Detaylı satıcı yönetim sayfası bunu kullanır.
+ */
+export async function GET(req: MedusaRequest, res: MedusaResponse) {
+  const sellerId = req.params.id
+  const marketplace: MarketplaceModuleService = req.scope.resolve(MARKETPLACE_MODULE)
+  const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
+
+  const seller = await marketplace.retrieveSeller(sellerId).catch(() => null)
+  if (!seller) return res.status(404).json({ message: "Satıcı bulunamadı." })
+
+  // Ürünler (satıcı→ürün yönünden; product'ı seller ile filtrelemek desteklenmiyor).
+  const { data: sellerRows } = await query.graph({
+    entity: "seller",
+    fields: [
+      "products.id",
+      "products.title",
+      "products.handle",
+      "products.status",
+      "products.thumbnail",
+      "products.created_at",
+    ],
+    filters: { id: sellerId },
+  })
+  const products = ((sellerRows[0] as any)?.products ?? []) as any[]
+  const productStats = {
+    total: products.length,
+    published: products.filter((p) => p.status === "published").length,
+    proposed: products.filter((p) => p.status === "proposed" || p.status === "draft").length,
+    rejected: products.filter((p) => p.status === "rejected").length,
+  }
+
+  // Tüm alt-siparişler (özet + payout bakiyeleri).
+  const orders = await marketplace.listSellerOrders({ seller_id: sellerId }, { take: 2000 })
+  const currency = (orders[0] as any)?.currency_code || "try"
+  const fulfilled = orders.filter((o: any) => o.fulfillment_status === "fulfilled")
+  const pendingShip = orders.filter((o: any) => o.fulfillment_status === "pending")
+  const orderStats = {
+    count: orders.length,
+    fulfilled_count: fulfilled.length,
+    pending_ship_count: pendingShip.length,
+    gross: sumField(orders, "subtotal"),
+    commission: sumField(orders, "commission_amount"),
+    earning_net: netEarning(orders),
+  }
+  const payout = {
+    currency_code: currency,
+    pending_balance: netEarning(orders.filter((o: any) => o.payout_status === "pending")),
+    eligible_balance: netEarning(orders.filter((o: any) => o.payout_status === "eligible")),
+    paid_total: netEarning(orders.filter((o: any) => o.payout_status === "paid")),
+    total_returned: sumField(orders, "returned_subtotal"),
+  }
+
+  // İadeler.
+  const recentReturns = await marketplace.listSellerReturns(
+    { seller_id: sellerId },
+    { take: 20, order: { created_at: "DESC" } }
+  )
+  const allReturns = await marketplace.listSellerReturns({ seller_id: sellerId }, { take: 2000 })
+  const returnStats = {
+    count: allReturns.length,
+    requested_count: allReturns.filter((r: any) => r.status === "requested").length,
+    returned_subtotal: sumField(allReturns, "returned_subtotal"),
+  }
+
+  // Değerlendirme özeti.
+  const ratingCount = Number((seller as any).rating_count ?? 0)
+  const ratingSum = Number((seller as any).rating_sum ?? 0)
+  const [, pendingReviewCount] = await marketplace.listAndCountSellerReviews(
+    { seller_id: sellerId, status: "pending" },
+    { take: 1 }
+  )
+  const reviewStats = {
+    rating_avg: ratingCount > 0 ? Math.round((ratingSum / ratingCount) * 10) / 10 : null,
+    rating_count: ratingCount,
+    pending_count: pendingReviewCount,
+  }
+
+  return res.json({
+    seller,
+    product_stats: productStats,
+    order_stats: orderStats,
+    payout,
+    return_stats: returnStats,
+    review_stats: reviewStats,
+    products,
+    recent_returns: recentReturns,
+  })
+}
 
 /** POST /admin/sellers/:id — satıcıyı güncelle (onay/askıya alma/komisyon vb.). */
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
