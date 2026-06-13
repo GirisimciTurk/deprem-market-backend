@@ -47,7 +47,11 @@ jobs:
           # boğulmasını önler — örn. başka repo aynı anda deploy ederse sıraya girer).
           exec 9>/tmp/deprem-deploy.lock; flock 9
           cd /opt/deprem/deploy
-          docker compose build backend
+          # DOCKER_BUILDKIT=0 (legacy builder): buildkit'te `npm ci` adımı sunucuda
+          # futex deadlock'a giriyordu (2026-06-12 deploy'u bu yüzden yarım kalmıştı).
+          # Dockerfile buildkit-özel sözdizimi (RUN --mount vb.) kullanmadığı için
+          # legacy builder uyumlu; `# syntax` satırı legacy'de yok sayılır.
+          DOCKER_BUILDKIT=0 docker compose build backend
           # NOT: prod build'de `medusa db:migrate` işini bitirince süreçten çıkmaz
           # (Redis workflow-engine event loop'u açık tutar). timeout ile sınırla, kodu yoksay.
           timeout 180 docker compose run --rm -T backend npx medusa db:migrate || true
