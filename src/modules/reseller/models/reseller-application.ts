@@ -2,7 +2,8 @@ import { model } from "@medusajs/framework/utils"
 
 /**
  * Bayilik başvurusu — storefront formundan gelir, admin panelden değerlendirilir.
- * `pending` → admin `approved`/`rejected` yapar.
+ * `pending` → admin `approved`/`rejected`/`suspended` yapar. Durum değişiminde
+ * başvuru sahibine sonuç e-postası gönderilir (lib/reseller-mail.ts).
  */
 const ResellerApplication = model.define("reseller_application", {
   id: model.id().primaryKey(),
@@ -13,7 +14,7 @@ const ResellerApplication = model.define("reseller_application", {
   city: model.text().default(""),
   tax_number: model.text().default(""),
   message: model.text().default(""),
-  status: model.enum(["pending", "approved", "rejected"]).default("pending").index(),
+  status: model.enum(["pending", "approved", "rejected", "suspended"]).default("pending").index(),
 })
 
 export default ResellerApplication

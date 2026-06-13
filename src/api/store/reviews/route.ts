@@ -67,6 +67,22 @@ export async function POST(
     return res.status(404).json({ message: "Ürün bulunamadı." })
   }
 
+  // Giriş yapmış müşterinin e-postasını yakala (yorum yayınlanınca bilgilendirme için).
+  const customerId = req.auth_context?.actor_id || null
+  let customerEmail: string | null = null
+  if (customerId) {
+    try {
+      const { data: customers } = await query.graph({
+        entity: "customer",
+        fields: ["email"],
+        filters: { id: customerId },
+      })
+      customerEmail = (customers?.[0] as any)?.email || null
+    } catch {
+      customerEmail = null
+    }
+  }
+
   const reviewService: ReviewModuleService = req.scope.resolve(REVIEW_MODULE)
 
   const [review] = await reviewService.createProductReviews([
@@ -74,8 +90,9 @@ export async function POST(
       product_id: product.id,
       product_handle: product.handle,
       product_title: product.title,
-      customer_id: req.auth_context?.actor_id || null,
+      customer_id: customerId,
       customer_name: name,
+      customer_email: customerEmail,
       rating,
       comment,
       status: "pending",

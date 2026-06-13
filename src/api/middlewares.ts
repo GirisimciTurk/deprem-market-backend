@@ -96,6 +96,17 @@ export default defineMiddlewares({
       ],
     },
     {
+      // Yorum fotoğrafı yükleme: base64 gövde büyük olabileceğinden body limiti yükseltilir.
+      method: ["POST"],
+      matcher: "/store/review-uploads",
+      bodyParser: { sizeLimit: "12mb" },
+      middlewares: [
+        authenticate("customer", ["session", "bearer"], {
+          allowUnauthenticated: true,
+        }),
+      ],
+    },
+    {
       // The customer's own reseller application(s) require a logged-in customer.
       method: ["GET"],
       matcher: "/store/reseller-applications/me",

@@ -26,3 +26,5 @@ dist
 
 # Sent emails (dev)
 sent-emails
+# Yerel dev yükleme test artefaktları (webp-local provider)
+static/test-*.webp

@@ -14,6 +14,9 @@ const ProductReview = model.define("product_review", {
   product_title: model.text(),
   customer_id: model.text().index().nullable(),
   customer_name: model.text(),
+  // Yorum sahibinin e-postası (giriş yapmış müşteride yakalanır) — yorum admin
+  // tarafından "Yayınla" (approved) yapıldığında bilgilendirme maili için kullanılır.
+  customer_email: model.text().nullable(),
   rating: model.number(),
   comment: model.text(),
   status: model.enum(["pending", "approved", "spam"]).default("pending").index(),
