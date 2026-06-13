@@ -12,13 +12,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 make g+
   && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./
-RUN npm ci
+# İlk kurulum tüm tarball'ları katman-içi npm cache'ine (/root/.npm) indirir; bu katman
+# package*.json değişmedikçe ÖNBELLEKLENİR (tekrar deploy'larda anında geçer).
+RUN npm ci --no-audit --no-fund
 
 COPY . .
 RUN npm run build            # → .medusa/server
-# Bağımsız sunucunun üretim bağımlılıklarını BURADA kur (derleme araçları mevcut;
-# native modüller — sharp vb. — doğru platforma derlenir). Runner'a hazır kopyalanır.
-RUN cd .medusa/server && npm install --omit=dev && npm cache clean --force
+# Bağımsız sunucunun üretim bağımlılıklarını BURADA kur. KRİTİK: `npm install` burada
+# ~23 dk sürüyordu (tüm bağımlılık ağacını yeniden ÇÖZÜMLÜYOR). `medusa build`,
+# .medusa/server için package.json İLE BİRLİKTE package-lock.json üretir → `npm ci`
+# çözümlemeyi atlayıp lockfile'dan deterministik+çok daha hızlı kurar. `--prefer-offline`
+# yukarıdaki `npm ci`'nin /root/.npm'e indirdiği tarball'ları yeniden indirmeden kullanır
+# (legacy builder uyumlu, futex riski yok). Lockfile uyuşmazsa build net hata verir (sessiz
+# bozulma yok) → güvenli.
+RUN cd .medusa/server && npm ci --omit=dev --prefer-offline --no-audit --no-fund
 
 # ---- 2) Çalışma aşaması -------------------------------------------------------
 FROM node:20-slim AS runner
