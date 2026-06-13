@@ -1,6 +1,7 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { z } from "zod"
 import { createSellerWorkflow } from "../../workflows/marketplace/create-seller"
+import { notifyAdmins } from "../../lib/notify"
 
 function slugify(input: string): string {
   const map: Record<string, string> = { ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u" }
@@ -58,6 +59,13 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       admin: data.admin,
       auth_identity_id: authIdentityId,
     },
+  })
+
+  await notifyAdmins(req.scope, {
+    type: "seller_signup",
+    title: "Yeni satıcı kaydı — onay bekliyor",
+    body: `${data.name} mağazası kaydoldu ve onayınızı bekliyor.`,
+    link: "/sellers",
   })
 
   return res.status(201).json({ seller: result.seller })

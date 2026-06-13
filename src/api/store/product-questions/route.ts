@@ -8,6 +8,7 @@ import { MARKETPLACE_MODULE } from "../../../modules/marketplace"
 import MarketplaceModuleService from "../../../modules/marketplace/service"
 import { reviewLimiter, enforceRateLimit } from "../../../lib/rate-limiter"
 import { sendQuestionAskedEmail } from "../../../lib/qa-mail"
+import { notifySeller } from "../../../lib/notify"
 
 /**
  * GET /store/product-questions?product_id=... (veya product_handle=)
@@ -110,7 +111,7 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
   ] as any)) as unknown
   const created = (Array.isArray(createdRes) ? createdRes[0] : createdRes) as any
 
-  // Satıcıya "yeni soru" bildirimi (best-effort).
+  // Satıcıya "yeni soru" bildirimi (best-effort): e-posta + panel-içi bildirim.
   try {
     await sendQuestionAskedEmail(req.scope, {
       seller_email: product.seller.email,
@@ -121,6 +122,12 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
   } catch {
     /* best-effort */
   }
+  await notifySeller(req.scope, product.seller.id, {
+    type: "question",
+    title: "Ürününüze yeni bir soru soruldu",
+    body: `${product.title}: "${question.slice(0, 120)}"`,
+    link: "/sorular",
+  })
 
   return res.status(201).json({ question: { id: created.id, status: created.status } })
 }

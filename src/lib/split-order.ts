@@ -1,6 +1,7 @@
 import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
 import { MARKETPLACE_MODULE } from "../modules/marketplace"
 import MarketplaceModuleService from "../modules/marketplace/service"
+import { notifySeller } from "./notify"
 
 /**
  * Bir müşteri siparişini satıcı bazında alt-siparişlere (seller_order) böler ve
@@ -133,5 +134,16 @@ export async function splitOrder(container: any, orderId: string): Promise<numbe
 
   await marketplace.createSellerOrders(sellerOrders as any)
   logger.info(`[splitOrder] ${orderId} → ${sellerOrders.length} alt-sipariş.`)
+
+  // Her satıcıya "yeni sipariş" panel-içi bildirimi (best-effort).
+  const displayId = order.display_id ? `#${order.display_id}` : ""
+  for (const so of sellerOrders) {
+    await notifySeller(container, so.seller_id, {
+      type: "order",
+      title: `Yeni sipariş ${displayId}`.trim(),
+      body: `${so.item_count} ürün — toplam ${(so.subtotal / 100).toFixed(2)} ₺`,
+      link: "/orders",
+    })
+  }
   return sellerOrders.length
 }

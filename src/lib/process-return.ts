@@ -1,6 +1,7 @@
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { MARKETPLACE_MODULE } from "../modules/marketplace"
 import MarketplaceModuleService from "../modules/marketplace/service"
+import { notifySeller } from "./notify"
 
 const num = (v: any) => Number(v ?? 0)
 
@@ -192,6 +193,18 @@ export async function routeReturnRequested(container: any, returnId: string): Pr
 
   await marketplace.createSellerReturns(rows as any)
   logger.info(`[return-route] ${returnId} → ${rows.length} satıcı iadesi (requested).`)
+
+  // İlgili satıcılara "yeni iade talebi" panel-içi bildirimi (best-effort).
+  for (const r of rows) {
+    if (!r.seller_id) continue
+    const displayId = r.display_id ? `#${r.display_id}` : ""
+    await notifySeller(container, r.seller_id, {
+      type: "return",
+      title: `Yeni iade talebi ${displayId}`.trim(),
+      body: "Bir müşteri ürününüz için iade talebi oluşturdu.",
+      link: "/returns",
+    })
+  }
   return rows.length
 }
 

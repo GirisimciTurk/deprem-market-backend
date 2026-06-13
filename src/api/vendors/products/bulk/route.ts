@@ -3,6 +3,7 @@ import { z } from "zod"
 import { resolveSeller } from "../../_lib/resolve-seller"
 import { createVendorProduct } from "../../_lib/create-vendor-product"
 import { getPendingRequiredContracts } from "../../../../lib/seller-contracts"
+import { notifyAdmins } from "../../../../lib/notify"
 
 const MAX_ROWS = 500
 
@@ -81,6 +82,16 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     } catch (e: any) {
       errors.push({ index: i, title: rowTitle, message: e?.message || "Ürün oluşturulamadı." })
     }
+  }
+
+  // Oluşturulan ürünler için admin'e TEK özet bildirim (satır başına spam yapma).
+  if (created.length > 0) {
+    await notifyAdmins(req.scope, {
+      type: "product_approval",
+      title: "Yayın bekleyen yeni ürünler",
+      body: `${resolved.seller.name}: ${created.length} ürün toplu yüklendi, onay bekliyor.`,
+      link: "/product-approvals",
+    })
   }
 
   return res.status(created.length ? 201 : 400).json({

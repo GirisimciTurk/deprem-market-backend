@@ -3,6 +3,7 @@ import { z } from "zod"
 import { RESELLER_MODULE } from "../../../modules/reseller"
 import ResellerModuleService from "../../../modules/reseller/service"
 import { resellerLimiter, enforceRateLimit } from "../../../lib/rate-limiter"
+import { notifyAdmins } from "../../../lib/notify"
 
 const schema = z.object({
   company_name: z.string().min(1, "Firma adı zorunlu"),
@@ -34,6 +35,13 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     tax_number: d.tax_number ?? "",
     message: d.message ?? "",
     status: "pending",
+  })
+
+  await notifyAdmins(req.scope, {
+    type: "reseller_application",
+    title: "Yeni bayilik başvurusu",
+    body: `${d.company_name}${d.city ? ` — ${d.city}` : ""}`,
+    link: "/resellers",
   })
 
   return res.status(201).json({ application: { id: application.id, status: application.status } })

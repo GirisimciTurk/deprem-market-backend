@@ -4,6 +4,7 @@ import SellerOrder from "./seller-order"
 import SellerReturn from "./seller-return"
 import SellerReview from "./seller-review"
 import ProductQuestion from "./product-question"
+import Conversation from "./conversation"
 
 /**
  * Satıcı (bayi) — pazar yerinde ürün satan iş ortağı.
@@ -41,6 +42,7 @@ const Seller = model.define("seller", {
   returns: model.hasMany(() => SellerReturn, { mappedBy: "seller" }),
   reviews: model.hasMany(() => SellerReview, { mappedBy: "seller" }),
   questions: model.hasMany(() => ProductQuestion, { mappedBy: "seller" }),
+  conversations: model.hasMany(() => Conversation, { mappedBy: "seller" }),
 })
 
 export default Seller

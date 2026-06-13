@@ -9,6 +9,7 @@ import { MARKETPLACE_MODULE } from "../../../modules/marketplace"
 import MarketplaceModuleService from "../../../modules/marketplace/service"
 import { reviewLimiter, enforceRateLimit } from "../../../lib/rate-limiter"
 import { sellerRatingAvg } from "../../../lib/seller-rating"
+import { notifySeller } from "../../../lib/notify"
 
 /**
  * GET /store/seller-reviews?seller_handle=...
@@ -94,6 +95,14 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
       status: "pending",
     },
   ])
+
+  // Satıcıya "yeni değerlendirme" panel-içi bildirimi (onay öncesi haberdar olsun).
+  await notifySeller(req.scope, seller.id, {
+    type: "review",
+    title: `Yeni değerlendirme (${rating}★)`,
+    body: comment ? String(comment).slice(0, 120) : "Mağazanıza yeni bir değerlendirme yapıldı.",
+    link: "/reviews",
+  })
 
   return res.status(201).json({ review })
 }

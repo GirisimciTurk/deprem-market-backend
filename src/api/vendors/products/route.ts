@@ -4,6 +4,7 @@ import { z } from "zod"
 import { resolveSeller } from "../_lib/resolve-seller"
 import { createVendorProduct } from "../_lib/create-vendor-product"
 import { getPendingRequiredContracts } from "../../../lib/seller-contracts"
+import { notifyAdmins } from "../../../lib/notify"
 
 /** GET /vendors/products?status=&q=&limit=&offset= — satıcının kendi ürünleri. */
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
@@ -117,6 +118,14 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     resolved.seller.handle,
     data
   )
+
+  // Admin kontrol merkezine "yayın bekleyen ürün" bildirimi.
+  await notifyAdmins(req.scope, {
+    type: "product_approval",
+    title: "Yayın bekleyen yeni ürün",
+    body: `${resolved.seller.name}: ${data.title}`,
+    link: "/product-approvals",
+  })
 
   return res.status(201).json({ product })
 }

@@ -79,6 +79,7 @@ const ADMIN_ONLY_MATCHERS = [
   "/admin/seller-contracts*",
   "/admin/product-approvals*",
   "/admin/product-questions*",
+  "/admin/conversations*",
   "/admin/marketplace-setup",
   "/admin/settle-payouts",
   "/admin/commission-rules*",
@@ -154,6 +155,16 @@ export default defineMiddlewares({
       // İade talebi oluşturmak için giriş yapmış müşteri gerekir (sipariş sahipliği doğrulanır).
       method: ["POST"],
       matcher: "/store/return-requests",
+      middlewares: [authenticate("customer", ["session", "bearer"])],
+    },
+    {
+      // Müşteri↔satıcı mesajlaşma: tüm uçlar giriş yapmış müşteri gerektirir
+      // (her uçta ayrıca konuşma sahipliği doğrulanır).
+      matcher: "/store/conversations",
+      middlewares: [authenticate("customer", ["session", "bearer"])],
+    },
+    {
+      matcher: "/store/conversations/*",
       middlewares: [authenticate("customer", ["session", "bearer"])],
     },
     // CORS: satıcı panelinin (farklı origin) /vendors çağrıları için. auth'tan ÖNCE
