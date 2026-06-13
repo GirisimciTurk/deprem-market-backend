@@ -5,8 +5,11 @@ import SellerOrder from "./models/seller-order"
 import SellerReturn from "./models/seller-return"
 import CommissionRule from "./models/commission-rule"
 import SellerReview from "./models/seller-review"
+import SellerContract from "./models/seller-contract"
+import SellerContractAcceptance from "./models/seller-contract-acceptance"
 
-// Otomatik CRUD: createSellers/... + SellerOrders/SellerReturns/CommissionRules/SellerReviews...
+// Otomatik CRUD: createSellers/... + SellerOrders/SellerReturns/CommissionRules/SellerReviews
+// /SellerContracts/SellerContractAcceptances...
 class MarketplaceModuleService extends MedusaService({
   Seller,
   SellerAdmin,
@@ -14,6 +17,8 @@ class MarketplaceModuleService extends MedusaService({
   SellerReturn,
   CommissionRule,
   SellerReview,
+  SellerContract,
+  SellerContractAcceptance,
 }) {
   /**
    * Bir satıcının ortalama puanını (rating_avg) ve onaylı değerlendirme sayısını

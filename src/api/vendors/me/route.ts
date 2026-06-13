@@ -3,6 +3,7 @@ import { z } from "zod"
 import { MARKETPLACE_MODULE } from "../../../modules/marketplace"
 import MarketplaceModuleService from "../../../modules/marketplace/service"
 import { resolveSeller } from "../_lib/resolve-seller"
+import { getPendingRequiredContracts } from "../../../lib/seller-contracts"
 
 /** GET /vendors/me — giriş yapmış satıcı kullanıcısının satıcı bilgileri. */
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
@@ -26,7 +27,18 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const sellerAdmin = data?.[0]
   if (!sellerAdmin) return res.status(404).json({ message: "Satıcı bulunamadı." })
 
-  return res.json({ seller_admin: sellerAdmin, seller: (sellerAdmin as any).seller })
+  // Onaylanması gereken (bekleyen) zorunlu sözleşme sayısı — panel sözleşme kapısını buna göre açar.
+  const sellerId = (sellerAdmin as any).seller?.id
+  let pending_contract_count = 0
+  if (sellerId) {
+    pending_contract_count = (await getPendingRequiredContracts(req.scope, sellerId)).length
+  }
+
+  return res.json({
+    seller_admin: sellerAdmin,
+    seller: (sellerAdmin as any).seller,
+    pending_contract_count,
+  })
 }
 
 // Satıcının kendi düzenleyebileceği mağaza alanları (status/commission_rate HARİÇ).

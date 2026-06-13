@@ -2,6 +2,7 @@ import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { z } from "zod"
 import { resolveSeller } from "../../_lib/resolve-seller"
 import { createVendorProduct } from "../../_lib/create-vendor-product"
+import { getPendingRequiredContracts } from "../../../../lib/seller-contracts"
 
 const MAX_ROWS = 500
 
@@ -34,6 +35,13 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   if (!resolved) return res.status(401).json({ message: "Yetkisiz." })
   if (resolved.seller.status !== "active") {
     return res.status(403).json({ message: "Yalnızca onaylı (aktif) satıcılar ürün ekleyebilir." })
+  }
+  const pending = await getPendingRequiredContracts(req.scope, resolved.seller.id)
+  if (pending.length > 0) {
+    return res.status(403).json({
+      message: "Ürün ekleyebilmek için önce satıcı sözleşmelerini onaylamalısınız.",
+      pending_contracts: pending.map((c) => ({ id: c.id, title: c.title })),
+    })
   }
 
   const parsed = bulkSchema.safeParse(req.body)
