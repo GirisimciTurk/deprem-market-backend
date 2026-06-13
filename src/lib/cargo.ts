@@ -8,7 +8,7 @@
  * Yeni bir firma eklemek için CARRIERS'a bir satır eklemen yeterli.
  */
 
-export type CarrierCode = "aras" | "yurtici" | "mng" | "ptt"
+export type CarrierCode = "yurtici" | "mng" | "ptt"
 
 export interface CarrierDef {
   code: CarrierCode
@@ -22,24 +22,18 @@ export interface CarrierDef {
 }
 
 /**
- * Aras takip URL şablonu prod'da netleştirilmeli. Aras'ın kamuya açık takip
- * sayfası sözleşmeye göre değişebildiği için env ile override edilebilir.
+ * Yurtiçi takip URL şablonu. Yurtiçi'nin kamuya açık takip sayfası sözleşmeye
+ * göre değişebildiği için env ile override edilebilir.
  */
-const ARAS_TRACKING_URL_TEMPLATE =
-  process.env.ARAS_TRACKING_URL_TEMPLATE ||
-  "https://kargotakip.araskargo.com.tr/?gonderitakipno={code}"
+const YURTICI_TRACKING_URL_TEMPLATE =
+  process.env.YURTICI_TRACKING_URL_TEMPLATE ||
+  "https://www.yurticikargo.com/tr/online-servisler/gonderi-sorgula?code={code}"
 
 export const CARRIERS: Record<CarrierCode, CarrierDef> = {
-  aras: {
-    code: "aras",
-    name: "Aras Kargo",
-    trackingUrlTemplate: ARAS_TRACKING_URL_TEMPLATE,
-  },
   yurtici: {
     code: "yurtici",
     name: "Yurtiçi Kargo",
-    trackingUrlTemplate:
-      "https://www.yurticikargo.com/tr/online-servisler/gonderi-sorgula?code={code}",
+    trackingUrlTemplate: YURTICI_TRACKING_URL_TEMPLATE,
   },
   mng: {
     code: "mng",
@@ -56,12 +50,12 @@ export const CARRIERS: Record<CarrierCode, CarrierDef> = {
 
 /** Varsayılan kargo firması (env ile override edilebilir). */
 export const DEFAULT_CARRIER: CarrierCode =
-  (process.env.DEFAULT_CARGO_CARRIER as CarrierCode) || "aras"
+  (process.env.DEFAULT_CARGO_CARRIER as CarrierCode) || "yurtici"
 
 /**
- * Bir fulfillment provider_id'sinden ("aras_kargo", "manual_manual" ...)
+ * Bir fulfillment provider_id'sinden ("yurtici_kargo", "manual_manual" ...)
  * kargo firmasını çözer. Bilinmeyen/manuel provider için DEFAULT_CARRIER döner —
- * çünkü manuel fulfillment'lar da gerçekte Aras ile gönderiliyor.
+ * çünkü manuel fulfillment'lar da gerçekte Yurtiçi ile gönderiliyor.
  */
 export function resolveCarrier(providerId?: string | null): CarrierDef {
   if (providerId) {

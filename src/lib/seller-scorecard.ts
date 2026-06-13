@@ -275,7 +275,8 @@ export async function computeSellerAnalytics(
     const k = dayKey(new Date(o.created_at))
     const bucket = buckets.get(k)
     const sales = Number(o.subtotal ?? 0)
-    const earning = Number(o.seller_earning ?? 0) - Number(o.returned_earning ?? 0)
+    const earning =
+      Number(o.seller_earning ?? 0) - Number(o.returned_earning ?? 0) - Number(o.cargo_fee ?? 0)
     if (bucket) {
       bucket.orders++
       bucket.sales += sales

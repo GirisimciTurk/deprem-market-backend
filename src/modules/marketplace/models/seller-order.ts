@@ -21,8 +21,12 @@ const SellerOrder = model.define("seller_order", {
   subtotal: model.number().default(0),
   commission_rate: model.number().default(0),
   commission_amount: model.number().default(0),
-  // Satıcının net kazancı = subtotal - commission_amount.
+  // Satıcının brüt kazancı = subtotal - commission_amount.
   seller_earning: model.number().default(0),
+  // Desi-bazlı kargo ücreti (satıcı maliyeti, kuruş). Net ödenecek tutardan
+  // ayrıca düşülür: net = seller_earning - returned_earning - cargo_fee.
+  // İade olsa bile kargo ücreti iade edilmez (gönderim yapılmıştır).
+  cargo_fee: model.number().default(0),
   item_count: model.number().default(0),
   // İade agregaları (order.return_received ile güncellenir). Net ödenecek =
   // seller_earning - returned_earning.

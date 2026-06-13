@@ -15,14 +15,17 @@ const updateSchema = z.object({
   tax_number: z.string().optional().nullable(),
   iban: z.string().optional().nullable(),
   account_holder: z.string().optional().nullable(),
-  default_carrier: z.enum(["aras", "yurtici", "mng", "ptt"]).optional().nullable(),
+  default_carrier: z.enum(["yurtici", "mng", "ptt"]).optional().nullable(),
   commission_rate: z.number().min(0).max(100).optional(),
   status: z.enum(["pending", "active", "suspended"]).optional(),
 })
 
 const sumField = (arr: any[], k: string) => arr.reduce((s, x) => s + Number(x[k] ?? 0), 0)
 const netEarning = (arr: any[]) =>
-  arr.reduce((s, x) => s + (Number(x.seller_earning ?? 0) - Number(x.returned_earning ?? 0)), 0)
+  arr.reduce(
+    (s, x) => s + (Number(x.seller_earning ?? 0) - Number(x.returned_earning ?? 0) - Number(x.cargo_fee ?? 0)),
+    0
+  )
 
 /**
  * GET /admin/sellers/:id
@@ -78,6 +81,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     eligible_balance: netEarning(orders.filter((o: any) => o.payout_status === "eligible")),
     paid_total: netEarning(orders.filter((o: any) => o.payout_status === "paid")),
     total_returned: sumField(orders, "returned_subtotal"),
+    total_cargo_fee: sumField(orders, "cargo_fee"),
   }
 
   // İadeler.

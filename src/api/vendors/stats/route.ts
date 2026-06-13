@@ -38,9 +38,13 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     { seller_id: resolved.seller.id, created_at: { $gte: monthStart } },
     { take: 1000 }
   )
-  // Net = seller_earning - returned_earning (iade düşülmüş).
+  // Net = seller_earning - returned_earning - cargo_fee (iade + kargo düşülmüş).
   const netSum = (arr: any[]) =>
-    arr.reduce((s: number, o: any) => s + (Number(o.seller_earning ?? 0) - Number(o.returned_earning ?? 0)), 0)
+    arr.reduce(
+      (s: number, o: any) =>
+        s + (Number(o.seller_earning ?? 0) - Number(o.returned_earning ?? 0) - Number(o.cargo_fee ?? 0)),
+      0
+    )
   const month_earnings = netSum(monthOrders)
 
   // Bakiyeler: pending (hakediş bekleyen) + eligible (ödenebilir).

@@ -12,7 +12,7 @@ import {
   FulfillmentOrderDTO,
   Logger,
 } from "@medusajs/framework/types"
-import { ArasKargoClient } from "./client"
+import { YurticiKargoClient } from "./client"
 
 type InjectedDependencies = {
   logger: Logger
@@ -21,45 +21,45 @@ type InjectedDependencies = {
 type Options = Record<string, unknown>
 
 /**
- * Aras Kargo fulfillment provider'ı.
+ * Yurtiçi Kargo fulfillment provider'ı.
  *
- * provider_id (DB'de): `aras_kargo`  →  identifier ("aras") + config id ("kargo").
+ * provider_id (DB'de): `yurtici_kargo`  →  identifier ("yurtici") + config id ("kargo").
  *
  * İki modda çalışır:
  *  - **Manuel mod** (varsayılan): API kimlik bilgisi yoksa fulfillment oluşturulur,
- *    takip numarası daha sonra admin panelden gönderi (shipment) anında girilir.
- *  - **API modu**: ARAS_* env değişkenleri tanımlıysa createFulfillment Aras'ta
+ *    takip numarası daha sonra satıcı/admin panelden gönderi (shipment) anında girilir.
+ *  - **API modu**: YURTICI_* env değişkenleri tanımlıysa createFulfillment Yurtiçi'de
  *    gönderi açıp takip numarası/etiketi otomatik döner (client.ts doldurulunca).
  */
-class ArasKargoFulfillmentProviderService extends AbstractFulfillmentProviderService {
-  static identifier = "aras"
+class YurticiKargoFulfillmentProviderService extends AbstractFulfillmentProviderService {
+  static identifier = "yurtici"
 
   protected logger_: Logger
   protected options_: Options
-  protected client_: ArasKargoClient | null
+  protected client_: YurticiKargoClient | null
 
   constructor({ logger }: InjectedDependencies, options: Options) {
     super()
     this.logger_ = logger
     this.options_ = options || {}
-    this.client_ = ArasKargoClient.fromEnv(logger)
+    this.client_ = YurticiKargoClient.fromEnv(logger)
   }
 
   async getFulfillmentOptions(): Promise<FulfillmentOption[]> {
     return [
       {
-        id: "aras-standard",
-        name: "Aras Kargo - Standart",
+        id: "yurtici-standard",
+        name: "Yurtiçi Kargo - Standart",
         code: "standard",
       },
       {
-        id: "aras-express",
-        name: "Aras Kargo - Hızlı",
+        id: "yurtici-express",
+        name: "Yurtiçi Kargo - Hızlı",
         code: "express",
       },
       {
-        id: "aras-standard-return",
-        name: "Aras Kargo - İade",
+        id: "yurtici-standard-return",
+        name: "Yurtiçi Kargo - İade",
         is_return: true,
       },
     ]
@@ -89,7 +89,7 @@ class ArasKargoFulfillmentProviderService extends AbstractFulfillmentProviderSer
   ): Promise<CalculatedShippingOptionPrice> {
     throw new MedusaError(
       MedusaError.Types.NOT_ALLOWED,
-      "Aras Kargo şu an sabit fiyat (flat) kullanıyor; hesaplanan fiyat desteklenmiyor."
+      "Yurtiçi Kargo şu an sabit fiyat (flat) kullanıyor; hesaplanan fiyat desteklenmiyor."
     )
   }
 
@@ -99,7 +99,7 @@ class ArasKargoFulfillmentProviderService extends AbstractFulfillmentProviderSer
     order: Partial<FulfillmentOrderDTO> | undefined,
     fulfillment: Partial<Omit<FulfillmentDTO, "provider_id" | "data" | "items">>
   ): Promise<CreateFulfillmentResult> {
-    // API modu: kimlik bilgisi varsa Aras'ta gönderi aç, takip no/etiketi al.
+    // API modu: kimlik bilgisi varsa Yurtiçi'de gönderi aç, takip no/etiketi al.
     if (this.client_) {
       try {
         const shippingAddress = (order as any)?.shipping_address
@@ -120,20 +120,20 @@ class ArasKargoFulfillmentProviderService extends AbstractFulfillmentProviderSer
         })
 
         return {
-          data: { carrier: "aras", shipment_id: result.shipmentId },
+          data: { carrier: "yurtici", shipment_id: result.shipmentId },
           labels: result.labels,
         }
       } catch (e: any) {
         // API başarısız → manuel moda düş, akışı bloklama.
         this.logger_.warn(
-          `[aras-kargo] Otomatik gönderi oluşturulamadı, manuel moda düşülüyor: ${e?.message}`
+          `[yurtici-kargo] Otomatik gönderi oluşturulamadı, manuel moda düşülüyor: ${e?.message}`
         )
       }
     }
 
-    // Manuel mod: takip numarası gönderi anında admin'den gelecek.
+    // Manuel mod: takip numarası gönderi anında satıcı/admin'den gelecek.
     return {
-      data: { carrier: "aras" },
+      data: { carrier: "yurtici" },
       labels: [],
     }
   }
@@ -145,7 +145,7 @@ class ArasKargoFulfillmentProviderService extends AbstractFulfillmentProviderSer
         await this.client_.cancelShipment(String(shipmentId))
       } catch (e: any) {
         this.logger_.warn(
-          `[aras-kargo] Aras gönderi iptali başarısız: ${e?.message}`
+          `[yurtici-kargo] Yurtiçi gönderi iptali başarısız: ${e?.message}`
         )
       }
     }
@@ -156,7 +156,7 @@ class ArasKargoFulfillmentProviderService extends AbstractFulfillmentProviderSer
     _fulfillment: Record<string, unknown>
   ): Promise<CreateFulfillmentResult> {
     return {
-      data: { carrier: "aras", is_return: true },
+      data: { carrier: "yurtici", is_return: true },
       labels: [],
     }
   }
@@ -178,4 +178,4 @@ class ArasKargoFulfillmentProviderService extends AbstractFulfillmentProviderSer
   }
 }
 
-export default ArasKargoFulfillmentProviderService
+export default YurticiKargoFulfillmentProviderService

@@ -100,8 +100,8 @@ module.exports = defineConfig({
             id: "manual",
           },
           {
-            // Aras Kargo — provider_id: "aras_kargo" (identifier "aras" + id "kargo").
-            resolve: "./src/modules/fulfillment/providers/aras-kargo",
+            // Yurtiçi Kargo — provider_id: "yurtici_kargo" (identifier "yurtici" + id "kargo").
+            resolve: "./src/modules/fulfillment/providers/yurtici-kargo",
             id: "kargo",
             options: {},
           },

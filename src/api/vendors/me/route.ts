@@ -51,7 +51,7 @@ const updateSchema = z.object({
   account_holder: z.string().optional().nullable(),
   tax_number: z.string().optional().nullable(),
   legal_name: z.string().optional().nullable(),
-  default_carrier: z.enum(["aras", "yurtici", "mng", "ptt"]).optional().nullable(),
+  default_carrier: z.enum(["yurtici", "mng", "ptt"]).optional().nullable(),
 })
 
 /** POST /vendors/me — satıcı kendi mağaza ayarlarını günceller. */

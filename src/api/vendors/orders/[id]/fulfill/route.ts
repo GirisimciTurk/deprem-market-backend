@@ -8,7 +8,7 @@ import { CARRIERS, getTrackingUrl, DEFAULT_CARRIER, CarrierCode } from "../../..
 import { sendSellerShipmentEmail } from "../../../../../lib/seller-cargo-mail"
 
 const bodySchema = z.object({
-  carrier: z.enum(["aras", "yurtici", "mng", "ptt"]).optional(),
+  carrier: z.enum(["yurtici", "mng", "ptt"]).optional(),
   tracking_number: z.string().trim().max(64).optional().nullable(),
 })
 
