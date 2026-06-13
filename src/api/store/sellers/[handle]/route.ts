@@ -1,5 +1,6 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
+import { sellerRatingAvg } from "../../../../lib/seller-rating"
 
 /**
  * GET /store/sellers/:handle — satıcı mağaza vitrini için herkese açık satıcı
@@ -20,6 +21,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       "description",
       "is_house",
       "status",
+      "rating_sum",
+      "rating_count",
       "products.id",
       "products.status",
     ],
@@ -43,6 +46,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       logo: seller.logo,
       description: seller.description,
       is_house: seller.is_house,
+      rating_avg: sellerRatingAvg(seller.rating_sum, seller.rating_count),
+      rating_count: seller.rating_count ?? 0,
     },
     product_ids,
     count: product_ids.length,

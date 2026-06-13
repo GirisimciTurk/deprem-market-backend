@@ -1,21 +1,8 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
-import { createProductsWorkflow } from "@medusajs/medusa/core-flows"
+import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { z } from "zod"
-import { MARKETPLACE_MODULE } from "../../../modules/marketplace"
 import { resolveSeller } from "../_lib/resolve-seller"
-
-function slugify(input: string): string {
-  const map: Record<string, string> = { ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u" }
-  return (
-    (input || "")
-      .toLowerCase()
-      .replace(/[çğıöşü]/g, (c) => map[c] || c)
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 96) || `urun-${Date.now()}`
-  )
-}
+import { createVendorProduct } from "../_lib/create-vendor-product"
 
 /** GET /vendors/products?status=&q=&limit=&offset= — satıcının kendi ürünleri. */
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
@@ -73,8 +60,10 @@ const createSchema = z.object({
   // Fiyat TRY, major birim (ör. 199.90) — kuruşa çevrilir.
   price: z.number().positive(),
   sku: z.string().optional().nullable(),
+  barcode: z.string().optional().nullable(),
   thumbnail: z.string().url().optional().nullable(),
   weight: z.number().positive().optional(),
+  stock: z.number().int().min(0).optional(),
 })
 
 /**
@@ -95,50 +84,12 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   }
   const data = parsed.data
 
-  const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
-  const link = req.scope.resolve(ContainerRegistrationKeys.LINK)
-
-  const { data: profiles } = await query.graph({ entity: "shipping_profile", fields: ["id"] })
-  const { data: channels } = await query.graph({ entity: "sales_channel", fields: ["id"] })
-  const shippingProfileId = profiles?.[0]?.id
-  const salesChannelId = channels?.[0]?.id
-
-  const amount = Math.round(data.price * 100)
-  const { result } = await createProductsWorkflow(req.scope).run({
-    input: {
-      products: [
-        {
-          title: data.title,
-          description: data.description ?? undefined,
-          handle: `${slugify(data.title)}-${resolved.seller.handle}`,
-          status: "proposed" as any,
-          thumbnail: data.thumbnail ?? undefined,
-          images: data.thumbnail ? [{ url: data.thumbnail }] : undefined,
-          weight: data.weight ?? undefined,
-          shipping_profile_id: shippingProfileId,
-          options: [{ title: "Model", values: ["Standart"] }],
-          variants: [
-            {
-              title: "Standart",
-              sku: data.sku ?? undefined,
-              options: { Model: "Standart" },
-              manage_inventory: true,
-              prices: [{ amount, currency_code: "try" }],
-            },
-          ],
-          sales_channels: salesChannelId ? [{ id: salesChannelId }] : [],
-        },
-      ],
-    },
-  })
-
-  const product = (result as any[])[0]
-
-  // Ürünü satıcıya bağla (seller-product link).
-  await link.create({
-    [MARKETPLACE_MODULE]: { seller_id: resolved.seller.id },
-    [Modules.PRODUCT]: { product_id: product.id },
-  })
+  const product = await createVendorProduct(
+    req.scope,
+    resolved.seller.id,
+    resolved.seller.handle,
+    data
+  )
 
   return res.status(201).json({ product })
 }

@@ -37,6 +37,12 @@ const SellerOrder = model.define("seller_order", {
   // Hakediş/ödeme döngüsü: pending (kargolanmadı ya da bekleme süresinde) →
   // eligible (hakediş etti, ödenebilir) → paid (ödendi).
   payout_status: model.enum(["pending", "eligible", "paid"]).default("pending").index(),
+  // Satıcının kendi kargolaması — kargo firması kodu (cargo.ts CarrierCode),
+  // takip numarası ve müşteriye gösterilecek "Kargom Nerede?" linki. Satıcı
+  // alt-siparişi kargoladığında doldurulur; müşteriye kargo maili buradan gider.
+  carrier: model.text().nullable(),
+  tracking_number: model.text().nullable(),
+  tracking_url: model.text().nullable(),
   // Kargolandıktan HAKEDIS_DAYS gün sonrası — bu tarihten sonra eligible olur.
   eligible_at: model.dateTime().nullable(),
   paid_at: model.dateTime().nullable(),

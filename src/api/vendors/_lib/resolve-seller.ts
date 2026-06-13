@@ -41,6 +41,9 @@ export async function resolveSeller(req: MedusaRequest): Promise<ResolvedSeller 
       "seller.iban",
       "seller.account_holder",
       "seller.tax_number",
+      "seller.default_carrier",
+      "seller.rating_sum",
+      "seller.rating_count",
     ],
     filters: { id: actorId },
   })

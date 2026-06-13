@@ -45,6 +45,7 @@ const ADMIN_ONLY_MATCHERS = [
   "/admin/customers*",
   "/admin/reseller-applications*",
   "/admin/sellers*",
+  "/admin/seller-reviews*",
   "/admin/product-approvals*",
   "/admin/marketplace-setup",
   "/admin/settle-payouts",
@@ -85,9 +86,25 @@ export default defineMiddlewares({
       middlewares: [authenticate("customer", ["session", "bearer"])],
     },
     {
+      // Satıcı değerlendirmesi: giriş yapmışsa müşteri id'si eklenir, misafir de olur.
+      method: ["POST"],
+      matcher: "/store/seller-reviews",
+      middlewares: [
+        authenticate("customer", ["session", "bearer"], {
+          allowUnauthenticated: true,
+        }),
+      ],
+    },
+    {
       // The customer's own reseller application(s) require a logged-in customer.
       method: ["GET"],
       matcher: "/store/reseller-applications/me",
+      middlewares: [authenticate("customer", ["session", "bearer"])],
+    },
+    {
+      // Sipariş satıcı-kargo bilgisi yalnız siparişin sahibi müşteriye açık.
+      method: ["GET"],
+      matcher: "/store/seller-shipments",
       middlewares: [authenticate("customer", ["session", "bearer"])],
     },
     {

@@ -2,6 +2,7 @@ import { model } from "@medusajs/framework/utils"
 import SellerAdmin from "./seller-admin"
 import SellerOrder from "./seller-order"
 import SellerReturn from "./seller-return"
+import SellerReview from "./seller-review"
 
 /**
  * Satıcı (bayi) — pazar yerinde ürün satan iş ortağı.
@@ -25,9 +26,19 @@ const Seller = model.define("seller", {
   // Payout için banka hesap sahibi adı
   account_holder: model.text().nullable(),
   is_house: model.boolean().default(false),
+  // Satıcının tercih ettiği varsayılan kargo firması (cargo.ts CarrierCode):
+  // aras | yurtici | mng | ptt. Kargolarken ön-seçili gelir.
+  default_carrier: model.text().nullable(),
+  // Onaylı müşteri değerlendirmelerinin puan TOPLAMI ve sayısı (ikisi de tam
+  // sayı; ortalama = rating_sum / rating_count, ondalık olarak okunurken
+  // hesaplanır — model.number() integer olduğu için avg'i burada tutamayız).
+  // SellerReview onay/spam durumu değişince recomputeSellerRating ile güncellenir.
+  rating_sum: model.number().default(0),
+  rating_count: model.number().default(0),
   admins: model.hasMany(() => SellerAdmin, { mappedBy: "seller" }),
   orders: model.hasMany(() => SellerOrder, { mappedBy: "seller" }),
   returns: model.hasMany(() => SellerReturn, { mappedBy: "seller" }),
+  reviews: model.hasMany(() => SellerReview, { mappedBy: "seller" }),
 })
 
 export default Seller
