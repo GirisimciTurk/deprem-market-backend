@@ -61,6 +61,12 @@ export async function getPendingRequiredContracts(
   container: any,
   sellerId: string
 ): Promise<ContractWithStatus[]> {
+  // House (platform'un kendi mağazası) sözleşme kapısına takılmaz — platform kendisiyle
+  // sözleşme yapmaz; saf modelde house yalnızca satışı satıcı panelinden yönetir.
+  const marketplace: MarketplaceModuleService = container.resolve(MARKETPLACE_MODULE)
+  const seller = await marketplace.retrieveSeller(sellerId).catch(() => null)
+  if ((seller as any)?.is_house) return []
+
   const all = await listContractsForSeller(container, sellerId)
   return all.filter((c) => c.required && !c.accepted)
 }

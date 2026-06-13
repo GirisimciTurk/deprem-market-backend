@@ -46,13 +46,30 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       "variants.id",
       "variants.sku",
       "variants.barcode",
-      "variants.inventory_quantity",
+      "variants.inventory_items.inventory.location_levels.stocked_quantity",
       "variants.prices.amount",
       "variants.prices.currency_code",
     ],
     filters,
     pagination: { skip: offset, take: limit, order: { created_at: "DESC" } },
   })
+
+  // Stok: `inventory_quantity` computed alanı sales-channel bağlamı gerektirdiği için
+  // satıcı sorgusunda null dönebiliyor → her varyantın inventory_items'larındaki
+  // location_levels.stocked_quantity'lerini toplayıp inventory_quantity'yi DOLDURUYORUZ.
+  for (const p of products as any[]) {
+    for (const v of p.variants ?? []) {
+      let total = 0
+      let hasLevel = false
+      for (const ii of v.inventory_items ?? []) {
+        for (const lvl of ii.inventory?.location_levels ?? []) {
+          total += Number(lvl.stocked_quantity ?? 0)
+          hasLevel = true
+        }
+      }
+      v.inventory_quantity = hasLevel ? total : null
+    }
+  }
 
   return res.json({ products, count: metadata?.count ?? products.length, offset, limit })
 }
