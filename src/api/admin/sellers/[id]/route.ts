@@ -3,6 +3,7 @@ import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { z } from "zod"
 import { MARKETPLACE_MODULE } from "../../../../modules/marketplace"
 import MarketplaceModuleService from "../../../../modules/marketplace/service"
+import { inviteSeller } from "../../../../lib/seller-invite"
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -104,8 +105,13 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     pending_count: pendingReviewCount,
   }
 
+  // Satıcının panel girişi var mı? (SellerAdmin kaydı = giriş kimliği bağlı.)
+  const [, adminCount] = await marketplace.listAndCountSellerAdmins({ seller_id: sellerId }, { take: 1 })
+  const hasLogin = adminCount > 0
+
   return res.json({
     seller,
+    has_login: hasLogin,
     product_stats: productStats,
     order_stats: orderStats,
     payout,
@@ -127,7 +133,25 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   if (!existing) return res.status(404).json({ message: "Satıcı bulunamadı." })
 
   const seller = await service.updateSellers({ id: req.params.id, ...parsed.data })
-  return res.json({ seller })
+
+  // Onayda (pending → active) satıcının HENÜZ giriş kimliği yoksa otomatik davet:
+  // emailpass kimliği + geçici şifre e-postası. Self-service kaydolanlarda zaten
+  // SellerAdmin vardır → atlanır (mevcut şifreleri korunur).
+  let invited = false
+  if (
+    parsed.data.status === "active" &&
+    (existing as any).status !== "active" &&
+    !(existing as any).is_house &&
+    (seller as any).email
+  ) {
+    const admins = await service.listSellerAdmins({ seller_id: req.params.id })
+    if (admins.length === 0) {
+      const result = await inviteSeller(req.scope, req.params.id)
+      invited = result.ok
+    }
+  }
+
+  return res.json({ seller, invited })
 }
 
 /** DELETE /admin/sellers/:id */
