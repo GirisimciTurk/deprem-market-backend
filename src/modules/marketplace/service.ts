@@ -10,6 +10,7 @@ import SellerContractAcceptance from "./models/seller-contract-acceptance"
 import ProductQuestion from "./models/product-question"
 import NotificationItem from "./models/notification-item"
 import Conversation, { ConversationMessage } from "./models/conversation"
+import SellerCampaign from "./models/seller-campaign"
 
 // Otomatik CRUD: createSellers/... + SellerOrders/SellerReturns/CommissionRules/SellerReviews
 // /SellerContracts/SellerContractAcceptances/ProductQuestions/NotificationItems...
@@ -26,6 +27,7 @@ class MarketplaceModuleService extends MedusaService({
   NotificationItem,
   Conversation,
   ConversationMessage,
+  SellerCampaign,
 }) {
   /**
    * Bir satıcının ortalama puanını (rating_avg) ve onaylı değerlendirme sayısını
