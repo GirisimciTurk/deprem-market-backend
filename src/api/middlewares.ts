@@ -40,6 +40,35 @@ async function requireAdminRole(
   }
 }
 
+// Medusa yalnız /store,/admin,/auth route gruplarına otomatik CORS uygular; özel
+// /vendors route'ları CORS ALMAZ → satıcı paneli (farklı origin: satici.depremtek.market)
+// /vendors çağrılarında tarayıcı tarafından bloklanır. Bu middleware AUTH_CORS/STORE_CORS'taki
+// izinli origin'ler için CORS başlıklarını ekler ve OPTIONS preflight'ı 204 ile yanıtlar.
+const VENDOR_CORS_ORIGINS = (process.env.AUTH_CORS || process.env.STORE_CORS || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean)
+
+function vendorCors(
+  req: MedusaRequest,
+  res: MedusaResponse,
+  next: MedusaNextFunction
+) {
+  const origin = req.headers.origin as string | undefined
+  if (origin && VENDOR_CORS_ORIGINS.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin)
+    res.setHeader("Vary", "Origin")
+    res.setHeader("Access-Control-Allow-Credentials", "true")
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
+    res.setHeader("Access-Control-Allow-Headers", "authorization,content-type")
+  }
+  if (req.method === "OPTIONS") {
+    res.status(204).end()
+    return
+  }
+  return next()
+}
+
 const ADMIN_ONLY_MATCHERS = [
   "/admin/promotions*",
   "/admin/customers*",
@@ -125,6 +154,10 @@ export default defineMiddlewares({
       matcher: "/store/return-requests",
       middlewares: [authenticate("customer", ["session", "bearer"])],
     },
+    // CORS: satıcı panelinin (farklı origin) /vendors çağrıları için. auth'tan ÖNCE
+    // çalışmalı (OPTIONS preflight kimlik doğrulama gerektirmeden 204 dönmeli).
+    { matcher: "/vendors", middlewares: [vendorCors] },
+    { matcher: "/vendors/*", middlewares: [vendorCors] },
     {
       // Satıcı (bayi) self-service kaydı: /auth/seller/emailpass/register'dan
       // gelen kayıt token'ını kabul eder (henüz actor yok) → satıcı oluşturulur.
