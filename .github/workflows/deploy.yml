@@ -60,7 +60,10 @@ jobs:
           DOCKER_BUILDKIT=0 docker compose build backend
           # NOT: prod build'de `medusa db:migrate` işini bitirince süreçten çıkmaz
           # (Redis workflow-engine event loop'u açık tutar). timeout ile sınırla, kodu yoksay.
-          timeout 180 docker compose run --rm -T backend npx medusa db:migrate || true
+          # KRİTİK: `</dev/null` ŞART — `docker compose run -T` stdin'e bağlı kalırsa
+          # heredoc'un KALAN satırlarını (aşağıdaki force-recreate + ps) stdin'den YUTAR,
+          # o komutlar hiç çalışmaz, container eski image'da kalır (deploy sessizce başarısız).
+          timeout 180 docker compose run --rm -T backend npx medusa db:migrate </dev/null || true
           # --force-recreate: yeni image build edilse de compose container'ı "up-to-date"
           # sanıp ESKİ image'da bırakabiliyor (2026-06-13 deploy'unda yaşandı). Force ile
           # her zaman yeni image + güncel .env ile yeniden oluştur.
