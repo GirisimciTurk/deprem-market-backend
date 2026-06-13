@@ -45,6 +45,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       "created_at",
       "variants.id",
       "variants.sku",
+      "variants.barcode",
+      "variants.inventory_quantity",
       "variants.prices.amount",
       "variants.prices.currency_code",
     ],

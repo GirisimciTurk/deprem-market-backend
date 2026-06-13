@@ -44,7 +44,8 @@ export async function inviteSeller(container: any, sellerId: string): Promise<In
 
   const seller = await marketplace.retrieveSeller(sellerId).catch(() => null)
   if (!seller) return { ok: false, reason: "not_found", message: "Satıcı bulunamadı." }
-  if ((seller as any).is_house) return { ok: false, reason: "house", message: "Ana mağaza için giriş gönderilemez." }
+  // NOT: House (ana mağaza) da artık satıcı panelinden yönetilir (saf pazaryeri modeli) →
+  // ona da giriş kimliği açılabilir. Eskiden burada is_house engeli vardı, kaldırıldı.
   const email = ((seller as any).email || "").trim().toLowerCase()
   if (!email) return { ok: false, reason: "no_email", message: "Satıcının e-posta adresi yok." }
 

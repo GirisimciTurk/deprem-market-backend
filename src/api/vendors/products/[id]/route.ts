@@ -9,7 +9,13 @@ async function ownsProduct(req: MedusaRequest, productId: string, sellerId: stri
   const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
   const { data } = await query.graph({
     entity: "product",
-    fields: ["id", "status", "seller.id", "variants.id"],
+    fields: [
+      "id",
+      "status",
+      "seller.id",
+      "variants.id",
+      "variants.inventory_items.inventory_item_id",
+    ],
     filters: { id: productId },
   })
   const product = data?.[0] as any
@@ -23,6 +29,10 @@ const updateSchema = z.object({
   thumbnail: z.string().url().optional().nullable(),
   price: z.number().positive().optional(),
   weight: z.number().positive().optional(),
+  sku: z.string().optional().nullable(),
+  barcode: z.string().optional().nullable(),
+  // Stok adedi — varsayılan lokasyondaki envanter seviyesi (yoksa açılır).
+  stock: z.coerce.number().int().min(0).optional(),
 })
 
 /** POST /vendors/products/:id — satıcı kendi ürününü günceller. */
@@ -52,17 +62,40 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     input: { products: [update as any] },
   })
 
-  // Fiyat değişikliği: ilk varyantın TRY fiyatını güncelle.
-  if (data.price !== undefined) {
-    const variantId = product.variants?.[0]?.id
-    if (variantId) {
-      const productModule = req.scope.resolve(Modules.PRODUCT)
-      await productModule.upsertProductVariants([
-        {
-          id: variantId,
-          prices: [{ amount: Math.round(data.price * 100), currency_code: "try" }],
-        } as any,
-      ])
+  // Fiyat / SKU / barkod: ilk varyantı güncelle (tek-varyant ürün modeli).
+  const variantId = product.variants?.[0]?.id
+  if (variantId && (data.price !== undefined || data.sku !== undefined || data.barcode !== undefined)) {
+    const productModule = req.scope.resolve(Modules.PRODUCT)
+    const variantUpdate: Record<string, unknown> = { id: variantId }
+    if (data.price !== undefined) {
+      variantUpdate.prices = [{ amount: Math.round(data.price * 100), currency_code: "try" }]
+    }
+    if (data.sku !== undefined) variantUpdate.sku = data.sku || null
+    if (data.barcode !== undefined) variantUpdate.barcode = data.barcode || null
+    await productModule.upsertProductVariants([variantUpdate as any])
+  }
+
+  // Stok: varsayılan lokasyondaki envanter seviyesini güncelle (yoksa oluştur).
+  if (data.stock !== undefined) {
+    const invItemId = product.variants?.[0]?.inventory_items?.[0]?.inventory_item_id
+    const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
+    const { data: locations } = await query.graph({ entity: "stock_location", fields: ["id"] })
+    const locationId = locations?.[0]?.id
+    if (invItemId && locationId) {
+      const inventory = req.scope.resolve(Modules.INVENTORY)
+      const existing = await inventory.listInventoryLevels({
+        inventory_item_id: invItemId,
+        location_id: locationId,
+      })
+      if (existing.length > 0) {
+        await inventory.updateInventoryLevels([
+          { inventory_item_id: invItemId, location_id: locationId, stocked_quantity: data.stock },
+        ])
+      } else {
+        await inventory.createInventoryLevels([
+          { inventory_item_id: invItemId, location_id: locationId, stocked_quantity: data.stock },
+        ])
+      }
     }
   }
 
