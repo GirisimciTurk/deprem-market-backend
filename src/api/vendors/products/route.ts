@@ -75,17 +75,34 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   return res.json({ products, count: metadata?.count ?? products.length, offset, limit })
 }
 
-const createSchema = z.object({
+const variantSchema = z.object({
   title: z.string().min(1),
-  description: z.string().optional().nullable(),
-  // Fiyat TRY, major birim (ör. 199.90) — kuruşa çevrilir.
   price: z.number().positive(),
   sku: z.string().optional().nullable(),
   barcode: z.string().optional().nullable(),
-  thumbnail: z.string().url().optional().nullable(),
-  weight: z.number().positive().optional(),
   stock: z.number().int().min(0).optional(),
+  options: z.record(z.string(), z.string()),
 })
+
+const createSchema = z
+  .object({
+    title: z.string().min(1),
+    description: z.string().optional().nullable(),
+    // Fiyat TRY, major birim (ör. 199.90) — kuruşa çevrilir. Tek-varyantta zorunlu.
+    price: z.number().positive().optional(),
+    sku: z.string().optional().nullable(),
+    barcode: z.string().optional().nullable(),
+    thumbnail: z.string().url().optional().nullable(),
+    weight: z.number().positive().optional(),
+    stock: z.number().int().min(0).optional(),
+    // Çok-varyant modu: ikisi de verilirse matris ürünü oluşturulur.
+    options: z.array(z.object({ title: z.string().min(1), values: z.array(z.string().min(1)).min(1) })).optional(),
+    variants: z.array(variantSchema).optional(),
+  })
+  .refine(
+    (d) => (d.variants && d.variants.length > 0 && d.options && d.options.length > 0) || d.price != null,
+    { message: "Tek-varyantta fiyat, çok-varyantta options+variants gereklidir." }
+  )
 
 /**
  * POST /vendors/products — satıcı yeni ürün ekler. Çift onay gereği ürün

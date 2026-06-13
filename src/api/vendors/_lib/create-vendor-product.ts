@@ -17,17 +17,33 @@ function slugify(input: string): string {
   )
 }
 
-export type VendorProductInput = {
+/** Çok-varyantlı üründe tek bir varyant (kombinasyon). */
+export type VendorVariantInput = {
   title: string
-  description?: string | null
-  /** Fiyat TRY, major birim (ör. 199.90) — kuruşa çevrilir. */
+  /** Fiyat TRY, major birim — kuruşa çevrilir. */
   price: number
   sku?: string | null
   barcode?: string | null
+  stock?: number | null
+  /** Seçenek eşlemesi: { Beden: "M", Renk: "Kırmızı" } */
+  options: Record<string, string>
+}
+
+export type VendorProductInput = {
+  title: string
+  description?: string | null
   thumbnail?: string | null
   weight?: number | null
+  // --- Tek-varyant modu (geriye dönük uyumlu) ---
+  /** Fiyat TRY, major birim (ör. 199.90) — kuruşa çevrilir. */
+  price?: number
+  sku?: string | null
+  barcode?: string | null
   /** Açılış stoğu (adet). Verilirse varsayılan lokasyonda stok seviyesi açılır. */
   stock?: number | null
+  // --- Çok-varyant modu (options+variants verilirse öncelikli) ---
+  options?: { title: string; values: string[] }[]
+  variants?: VendorVariantInput[]
 }
 
 /**
@@ -54,9 +70,48 @@ export async function createVendorProduct(
   const shippingProfileId = profiles?.[0]?.id
   const salesChannelId = channels?.[0]?.id
 
-  const amount = Math.round(input.price * 100)
   const base = slugify(input.title)
   const handle = `${base}-${sellerHandle}${handleSuffix ? `-${handleSuffix}` : ""}`
+
+  // Çok-varyant modu: options + variants verildiyse onları kullan; aksi halde
+  // tek-varyant ("Model: Standart") modu (geriye dönük uyumlu).
+  const validOptions = (input.options ?? []).filter(
+    (o) => o.title?.trim() && Array.isArray(o.values) && o.values.length > 0
+  )
+  const multi = validOptions.length > 0 && (input.variants?.length ?? 0) > 0
+
+  let optionsPayload: { title: string; values: string[] }[]
+  let variantsPayload: any[]
+  // Varyant başlığı → açılış stoğu (create sonrası lokasyon seviyesi için).
+  const stockByTitle: Record<string, number> = {}
+
+  if (multi) {
+    optionsPayload = validOptions.map((o) => ({ title: o.title.trim(), values: o.values }))
+    variantsPayload = (input.variants ?? []).map((v) => {
+      if (v.stock != null) stockByTitle[v.title] = Math.max(0, Math.floor(Number(v.stock)))
+      return {
+        title: v.title,
+        sku: v.sku ?? undefined,
+        barcode: v.barcode ?? undefined,
+        options: v.options,
+        manage_inventory: true,
+        prices: [{ amount: Math.round(v.price * 100), currency_code: "try" }],
+      }
+    })
+  } else {
+    optionsPayload = [{ title: "Model", values: ["Standart"] }]
+    variantsPayload = [
+      {
+        title: "Standart",
+        sku: input.sku ?? undefined,
+        barcode: input.barcode ?? undefined,
+        options: { Model: "Standart" },
+        manage_inventory: true,
+        prices: [{ amount: Math.round(Number(input.price) * 100), currency_code: "try" }],
+      },
+    ]
+    if (input.stock != null) stockByTitle["Standart"] = Math.max(0, Math.floor(Number(input.stock)))
+  }
 
   const { result } = await createProductsWorkflow(scope).run({
     input: {
@@ -70,17 +125,8 @@ export async function createVendorProduct(
           images: input.thumbnail ? [{ url: input.thumbnail }] : undefined,
           weight: input.weight ?? undefined,
           shipping_profile_id: shippingProfileId,
-          options: [{ title: "Model", values: ["Standart"] }],
-          variants: [
-            {
-              title: "Standart",
-              sku: input.sku ?? undefined,
-              barcode: input.barcode ?? undefined,
-              options: { Model: "Standart" },
-              manage_inventory: true,
-              prices: [{ amount, currency_code: "try" }],
-            },
-          ],
+          options: optionsPayload,
+          variants: variantsPayload,
           sales_channels: salesChannelId ? [{ id: salesChannelId }] : [],
         },
       ],
@@ -95,33 +141,30 @@ export async function createVendorProduct(
     [Modules.PRODUCT]: { product_id: product.id },
   })
 
-  // Açılış stoğu verildiyse varsayılan lokasyonda envanter seviyesi aç.
-  const stock = input.stock != null ? Math.max(0, Math.floor(Number(input.stock))) : null
-  if (stock != null) {
+  // Açılış stoğu verilen varyantlar için varsayılan lokasyonda envanter seviyesi
+  // aç. Varyantları BAŞLIĞA göre eşleştiririz (create envanter kalemini açar,
+  // miktarı açmaz). Çok-varyantta her varyantın kendi stoğu olabilir.
+  if (Object.keys(stockByTitle).length > 0) {
     const { data: created } = await query.graph({
       entity: "product",
-      fields: ["id", "variants.inventory_items.inventory_item_id"],
+      fields: ["id", "variants.title", "variants.inventory_items.inventory_item_id"],
       filters: { id: product.id },
     })
-    const invItemId = (created?.[0] as any)?.variants?.[0]?.inventory_items?.[0]
-      ?.inventory_item_id
-    const { data: locations } = await query.graph({
-      entity: "stock_location",
-      fields: ["id"],
-    })
+    const { data: locations } = await query.graph({ entity: "stock_location", fields: ["id"] })
     const locationId = locations?.[0]?.id
-    if (invItemId && locationId) {
-      await createInventoryLevelsWorkflow(scope).run({
-        input: {
-          inventory_levels: [
-            {
-              inventory_item_id: invItemId,
-              location_id: locationId,
-              stocked_quantity: stock,
-            },
-          ],
-        },
-      })
+    const variants = ((created?.[0] as any)?.variants ?? []) as any[]
+    const levels: { inventory_item_id: string; location_id: string; stocked_quantity: number }[] = []
+    if (locationId) {
+      for (const v of variants) {
+        const qty = stockByTitle[v.title]
+        const invItemId = v.inventory_items?.[0]?.inventory_item_id
+        if (qty != null && invItemId) {
+          levels.push({ inventory_item_id: invItemId, location_id: locationId, stocked_quantity: qty })
+        }
+      }
+    }
+    if (levels.length > 0) {
+      await createInventoryLevelsWorkflow(scope).run({ input: { inventory_levels: levels } })
     }
   }
 
