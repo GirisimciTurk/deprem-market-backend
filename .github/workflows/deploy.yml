@@ -29,17 +29,23 @@ jobs:
 
       - name: Kodu sunucuya rsync'le
         run: |
-          rsync -az --delete \
+          # rsync zaman zaman ssh bağlantı hatasıyla (exit 255) düşüyor → 4 deneme + artan backoff.
+          n=0
+          until rsync -az --delete \
             --exclude='.git' --exclude='.github' --exclude='node_modules' \
             --exclude='.env' --exclude='.env.*' --exclude='.medusa' \
             --exclude='dist' --exclude='sent-emails' --exclude='static' \
             --exclude='coverage' --exclude='*.log' \
-            -e "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
-            ./ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/opt/deprem/deprem-market-backend/"
+            -e "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ConnectionAttempts=3 -o ServerAliveInterval=15 -o ServerAliveCountMax=8" \
+            ./ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/opt/deprem/deprem-market-backend/"; do
+            n=$((n+1)); [ $n -ge 4 ] && { echo "rsync 4 denemede de başarısız (ssh 255 flaky)"; exit 1; }
+            echo "rsync denemesi $n başarısız, $((n*10))s sonra tekrar..."; sleep $((n*10))
+          done
 
       - name: Build + migrate + restart
         run: |
           ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
+            -o ConnectTimeout=20 -o ConnectionAttempts=3 \
             -o ServerAliveInterval=30 -o ServerAliveCountMax=40 \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -se <<'REMOTE'
           set -e
