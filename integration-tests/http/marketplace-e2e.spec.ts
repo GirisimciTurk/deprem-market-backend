@@ -272,6 +272,7 @@ medusaIntegrationTestRunner({
       let pk: { headers: Record<string, string> }
       let regionId: string
       let variantId: string
+      let productId: string
       let orderId: string
 
       beforeAll(async () => {
@@ -280,6 +281,7 @@ medusaIntegrationTestRunner({
         pk = { headers: { "x-publishable-api-key": s.pubKey } }
         regionId = s.regionId
         variantId = s.variantId
+        productId = s.product.id
       })
 
       it("misafir müşteri sepet → adres → kargo → ödeme → sipariş tamamlar", async () => {
@@ -324,6 +326,75 @@ medusaIntegrationTestRunner({
         expect(Number(so.subtotal)).toBeGreaterThan(0)
         // komisyon (%10) hesaplandı mı
         expect(Number(so.commission_amount)).toBeGreaterThan(0)
+      })
+
+      it("müşteri kaydı + giriş + /customers/me çalışır", async () => {
+        const email = "hesaptest@test.local"
+        const reg = await api.post(
+          "/auth/customer/emailpass/register",
+          { email, password: "Test1234!" }
+        )
+        const regToken = reg.data.token
+        expect(regToken).toBeTruthy()
+        await api.post("/store/customers", { email, first_name: "Hesap", last_name: "Test" }, {
+          headers: { ...pk.headers, authorization: `Bearer ${regToken}` },
+        })
+        const login = await api.post("/auth/customer/emailpass", { email, password: "Test1234!" })
+        const me = await api.get("/store/customers/me", {
+          headers: { ...pk.headers, authorization: `Bearer ${login.data.token}` },
+        })
+        expect(me.status).toEqual(200)
+        expect(me.data.customer.email).toEqual(email)
+      })
+
+      it("Ürün Soru-Cevap: müşteri sorar → satıcı yanıtlar → mağazada görünür", async () => {
+        // müşteri soru sorar (public)
+        const ask = await api.post(
+          "/store/product-questions",
+          { product_id: productId, question: "Bu ürün stokta mı acaba?", name: "Soran Müşteri" },
+          pk
+        )
+        expect([200, 201]).toContain(ask.status)
+        // satıcı bekleyen soruyu görür
+        const pending = await api.get("/vendors/questions", authHeader(crudToken))
+        const q = pending.data.questions.find((x: any) => x.product_id === productId)
+        expect(q).toBeTruthy()
+        // satıcı yanıtlar
+        const ans = await api.post(
+          `/vendors/questions/${q.id}/answer`,
+          { answer: "Evet, stoğumuzda mevcuttur." },
+          authHeader(crudToken)
+        )
+        expect([200, 201]).toContain(ans.status)
+        // mağaza public ucu yalnız yanıtlanmışları döndürür → soru artık görünür + cevaplı
+        const store = await api.get(`/store/product-questions?product_id=${productId}`, pk)
+        expect(store.data.questions.length).toBeGreaterThan(0)
+        expect(store.data.questions.some((x: any) => x.answer && x.answer.length > 0)).toBe(true)
+      })
+
+      it("Satıcı yorumu: müşteri yorum → admin onay → satıcı görür + vitrin puanı", async () => {
+        const mp = container.resolve(MARKETPLACE_MODULE)
+        // müşteri yorum gönderir (pending)
+        const rev = await api.post(
+          "/store/seller-reviews",
+          { seller_handle: "crud-satici", rating: 5, comment: "Hızlı kargo, teşekkürler", name: "Ayşe K." },
+          pk
+        )
+        expect([200, 201]).toContain(rev.status)
+        // admin moderasyonu (onay + puan yeniden hesapla)
+        const [pendingRev] = await mp.listSellerReviews({ seller_id: crudSellerId, status: "pending" })
+        expect(pendingRev).toBeTruthy()
+        await mp.updateSellerReviews({ id: pendingRev.id, status: "approved" })
+        if (typeof (mp as any).recomputeSellerRating === "function") {
+          await (mp as any).recomputeSellerRating(crudSellerId)
+        }
+        // satıcı onaylı yorumu görür
+        const vendorReviews = await api.get("/vendors/reviews", authHeader(crudToken))
+        expect(vendorReviews.data.reviews.some((r: any) => r.status === "approved")).toBe(true)
+        // vitrin puanı hesaplanır
+        const storefront = await api.get("/store/sellers/crud-satici", pk)
+        const seller = storefront.data.seller || storefront.data
+        expect(Number(seller.rating_avg)).toBeGreaterThan(0)
       })
     })
   },
