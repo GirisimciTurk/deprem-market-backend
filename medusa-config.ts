@@ -72,18 +72,25 @@ module.exports = defineConfig({
     //  - WORKFLOW_ENGINE: uzun/çok-adımlı workflow'lar (ödeme, fulfillment, iade) kalıcı durumla
     //    çalışır, restart sonrası kaldığı yerden devam/retry edebilir.
     //  - CACHE: çok-sunucuda paylaşımlı cache.
-    [Modules.EVENT_BUS]: {
-      resolve: "@medusajs/event-bus-redis",
-      options: { redisUrl: process.env.REDIS_URL },
-    },
-    [Modules.WORKFLOW_ENGINE]: {
-      resolve: "@medusajs/workflow-engine-redis",
-      options: { redis: { redisUrl: process.env.REDIS_URL } },
-    },
-    [Modules.CACHE]: {
-      resolve: "@medusajs/cache-redis",
-      options: { redisUrl: process.env.REDIS_URL },
-    },
+    // YALNIZCA REDIS_URL tanımlıysa yüklenir; yoksa Medusa varsayılan IN-MEMORY
+    // modülleri kullanır (Redis'siz lokal dev + entegrasyon testleri için). Prod'da
+    // REDIS_URL dolu olduğundan davranış değişmez.
+    ...(process.env.REDIS_URL
+      ? {
+          [Modules.EVENT_BUS]: {
+            resolve: "@medusajs/event-bus-redis",
+            options: { redisUrl: process.env.REDIS_URL },
+          },
+          [Modules.WORKFLOW_ENGINE]: {
+            resolve: "@medusajs/workflow-engine-redis",
+            options: { redis: { redisUrl: process.env.REDIS_URL } },
+          },
+          [Modules.CACHE]: {
+            resolve: "@medusajs/cache-redis",
+            options: { redisUrl: process.env.REDIS_URL },
+          },
+        }
+      : {}),
     [Modules.FILE]: {
       resolve: "@medusajs/file",
       options: {

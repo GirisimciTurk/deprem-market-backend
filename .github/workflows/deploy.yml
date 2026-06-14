@@ -15,7 +15,47 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # DEPLOY KAPISI: entegrasyon E2E testleri geçmeden canlıya çıkılmaz.
+  # (Bu oturumda canlıda bulunan satıcı bug'ları + sözleşme/delil akışı burada korunur.)
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    env:
+      DB_HOST: localhost
+      DB_PORT: "5432"
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/medusa
+      REDIS_URL: ""
+      JWT_SECRET: test-jwt-secret
+      COOKIE_SECRET: test-cookie-secret
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Bağımlılıkları kur
+        run: npm ci
+      - name: Birim testleri
+        run: npm run test:unit
+      - name: Entegrasyon E2E testleri
+        run: npm run test:integration:http
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
