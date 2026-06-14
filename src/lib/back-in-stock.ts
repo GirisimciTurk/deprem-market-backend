@@ -69,6 +69,8 @@ export async function notifyBackInStock(
         body: `“${title}” yeniden stokta. Tükenmeden sipariş verin.`,
         url: handle ? `/tr/products/${handle}` : "/tr/store",
         tag: `stock-${sample.variant_id}`,
+        // Bildirim altı buton → doğrudan ürün sayfası (ana url ile aynı hedef).
+        actions: [{ action: "view", title: "Ürüne git" }],
       })
     }
 

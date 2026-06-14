@@ -56,11 +56,18 @@ export async function sendOrderPush(
   const no = order.display_id?.toString() || orderId.substring(0, 8)
   const copy = COPY[status](no)
 
+  // Bildirim altı aksiyon butonu: iptal → sipariş listesi, diğerleri → sipariş detayı.
+  const actions =
+    status === "canceled"
+      ? [{ action: "orders", title: "Siparişlerim", url: "/tr/account/orders" }]
+      : [{ action: "view", title: "Siparişi gör" }]
+
   try {
     const sent = await sendToCustomer(container, customerId, {
       ...copy,
       url: `/tr/account/orders/details/${orderId}`,
       tag: `order-${orderId}`,
+      actions,
     })
     if (sent > 0) {
       logger.info(`[OrderPush:${status}] ${sent} cihaza gönderildi (#${no}).`)

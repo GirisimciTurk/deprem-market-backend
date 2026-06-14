@@ -23,6 +23,12 @@ export type PushPayload = {
   image?: string
   /** Aynı tag'li bildirimler üst üste binmek yerine birbirini günceller. */
   tag?: string
+  /**
+   * Bildirim altındaki aksiyon butonları (örn. "Siparişi gör"). Storefront SW'si
+   * `action`'a göre `url`'e gider; `url` yoksa bildirimin ana `url`'i kullanılır.
+   * Tarayıcılar genelde en fazla 2 buton gösterir.
+   */
+  actions?: { action: string; title: string; icon?: string; url?: string }[]
 }
 
 type StoredSubscription = {
