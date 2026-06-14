@@ -1,8 +1,9 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
-import { updateProductsWorkflow } from "@medusajs/medusa/core-flows"
+import { updateProductsWorkflow, updateProductVariantsWorkflow } from "@medusajs/medusa/core-flows"
 import { z } from "zod"
 import { resolveSeller } from "../../_lib/resolve-seller"
+import { MARKETPLACE_MODULE } from "../../../../modules/marketplace"
 
 /** Ürünün bu satıcıya ait olup olmadığını doğrular. */
 async function ownsProduct(req: MedusaRequest, productId: string, sellerId: string) {
@@ -65,14 +66,18 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   // Fiyat / SKU / barkod: ilk varyantı güncelle (tek-varyant ürün modeli).
   const variantId = product.variants?.[0]?.id
   if (variantId && (data.price !== undefined || data.sku !== undefined || data.barcode !== undefined)) {
-    const productModule = req.scope.resolve(Modules.PRODUCT)
-    const variantUpdate: Record<string, unknown> = { id: variantId }
+    // Fiyat pricing modülü/price-set ile yönetilir → upsertProductVariants ile
+    // `prices` güncellemek MikroORM'da "fieldNames undefined" ile 500 verir.
+    // updateProductVariantsWorkflow prices'ı doğru işler (price_set döndürür).
+    const variantUpdate: Record<string, unknown> = {}
     if (data.price !== undefined) {
       variantUpdate.prices = [{ amount: Math.round(data.price * 100), currency_code: "try" }]
     }
     if (data.sku !== undefined) variantUpdate.sku = data.sku || null
     if (data.barcode !== undefined) variantUpdate.barcode = data.barcode || null
-    await productModule.upsertProductVariants([variantUpdate as any])
+    await updateProductVariantsWorkflow(req.scope).run({
+      input: { selector: { id: variantId }, update: variantUpdate as any },
+    })
   }
 
   // Stok: varsayılan lokasyondaki envanter seviyesini güncelle (yoksa oluştur).
@@ -109,6 +114,15 @@ export async function DELETE(req: MedusaRequest, res: MedusaResponse) {
 
   const product = await ownsProduct(req, req.params.id, resolved.seller.id)
   if (!product) return res.status(404).json({ message: "Ürün bulunamadı." })
+
+  // Önce seller↔product link'ini kaldır (yoksa ürün silinince askıda link kalır →
+  // /vendors/products & /vendors/stats null elemanda 500 verir). create-vendor-product
+  // link'i link.create ile kuruyor; aynısını dismiss ile geri al.
+  const link = req.scope.resolve(ContainerRegistrationKeys.LINK)
+  await link.dismiss({
+    [MARKETPLACE_MODULE]: { seller_id: resolved.seller.id },
+    [Modules.PRODUCT]: { product_id: product.id },
+  })
 
   const productModule = req.scope.resolve(Modules.PRODUCT)
   await productModule.deleteProducts([product.id])

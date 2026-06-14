@@ -26,7 +26,11 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     fields: ["products.id"],
     filters: { id: resolved.seller.id },
   })
-  const productIds = ((sellerRows[0] as any)?.products ?? []).map((p: any) => p.id)
+  // filter(Boolean): silinmiş ürüne işaret eden askıda link query.graph'ta null
+  // eleman döndürür → map'ten önce ayıkla (yoksa 500).
+  const productIds = ((sellerRows[0] as any)?.products ?? [])
+    .filter(Boolean)
+    .map((p: any) => p.id)
   if (productIds.length === 0) {
     return res.json({ products: [], count: 0, offset, limit })
   }

@@ -65,8 +65,13 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   // HİBRİT KARGO: anlaşmalı kargoda (Yurtiçi) platform kargo ücreti hak edişten
   // düşülür; satıcı kendi kargosuyla gönderirse düşülmez (cargo_fee = 0).
   // platform_cargo_fee split anında sabitlenir → firma değişiminde geri yüklenir.
+  // platform_cargo_fee 0 olabilir (migration öncesi siparişler hiç yazmamış) →
+  // `??` 0'ı geçerli sayıp eski cargo_fee'yi (split anında yazılan desi ücreti)
+  // SIFIRLARDI. platform_cargo_fee>0 ise onu, değilse mevcut cargo_fee'yi kullan.
+  const platformFee = Number((so as any).platform_cargo_fee ?? 0)
+  const existingFee = Number((so as any).cargo_fee ?? 0)
   const cargoFee = isPlatformCarrier(carrier)
-    ? Number((so as any).platform_cargo_fee ?? (so as any).cargo_fee ?? 0)
+    ? (platformFee > 0 ? platformFee : existingFee)
     : 0
 
   // İdempotent: zaten kargolanmışsa hakediş saatini (fulfilled_at/eligible_at)

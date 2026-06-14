@@ -19,7 +19,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     fields: ["products.id", "products.status"],
     filters: { id: resolved.seller.id },
   })
-  const products = ((sellerRows[0] as any)?.products ?? []) as any[]
+  // filter(Boolean): silinmiş ürüne işaret eden askıda link null eleman döndürür.
+  const products = (((sellerRows[0] as any)?.products ?? []) as any[]).filter(Boolean)
   const product_count = products.length
   const pending_product_count = (products as any[]).filter(
     (p) => p.status === "proposed" || p.status === "draft"
