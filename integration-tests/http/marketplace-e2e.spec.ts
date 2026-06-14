@@ -274,6 +274,7 @@ medusaIntegrationTestRunner({
       let variantId: string
       let productId: string
       let orderId: string
+      let sellerOrderId: string
 
       beforeAll(async () => {
         // Ticaret ortamı + ürünü CRUD satıcısına bağla (zincir için)
@@ -323,9 +324,26 @@ medusaIntegrationTestRunner({
         }
         expect(sellerOrders.length).toBeGreaterThan(0)
         const so = sellerOrders[0]
+        sellerOrderId = so.id
         expect(Number(so.subtotal)).toBeGreaterThan(0)
         // komisyon (%10) hesaplandı mı
         expect(Number(so.commission_amount)).toBeGreaterThan(0)
+      })
+
+      it("satıcı siparişi kargolar → kargo bilgisi + hakediş zamanlanır", async () => {
+        const res = await api.post(
+          `/vendors/orders/${sellerOrderId}/fulfill`,
+          { carrier: "yurtici", tracking_number: "YK-TEST-12345" },
+          authHeader(crudToken)
+        )
+        expect([200, 201]).toContain(res.status)
+        const mp = container.resolve(MARKETPLACE_MODULE)
+        const so: any = await mp.retrieveSellerOrder(sellerOrderId)
+        expect(so.fulfillment_status).toEqual("fulfilled")
+        expect(so.carrier).toEqual("yurtici")
+        expect(so.tracking_number).toEqual("YK-TEST-12345")
+        expect(so.tracking_url).toBeTruthy() // cargo.ts şablonundan üretildi
+        expect(so.eligible_at).toBeTruthy() // hakediş tarihi zamanlandı
       })
 
       it("müşteri kaydı + giriş + /customers/me çalışır", async () => {
