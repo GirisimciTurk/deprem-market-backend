@@ -30,6 +30,7 @@ export async function resolveSeller(req: MedusaRequest): Promise<ResolvedSeller 
       "id",
       "seller.id",
       "seller.name",
+      "seller.legal_name",
       "seller.handle",
       "seller.status",
       "seller.commission_rate",

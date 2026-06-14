@@ -83,6 +83,7 @@ const ADMIN_ONLY_MATCHERS = [
   "/admin/seller-reviews*",
   "/admin/seller-returns*",
   "/admin/seller-contracts*",
+  "/admin/contract-setup",
   "/admin/product-approvals*",
   "/admin/product-questions*",
   "/admin/conversations*",
