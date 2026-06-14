@@ -26,7 +26,14 @@ const SellerOrder = model.define("seller_order", {
   // Desi-bazlı kargo ücreti (satıcı maliyeti, kuruş). Net ödenecek tutardan
   // ayrıca düşülür: net = seller_earning - returned_earning - cargo_fee.
   // İade olsa bile kargo ücreti iade edilmez (gönderim yapılmıştır).
+  // HİBRİT KARGO: bu alan EFEKTİF düşülen ücrettir. Anlaşmalı kargoda (Yurtiçi)
+  // platform_cargo_fee'ye eşittir; satıcı kendi kargosuyla gönderirse 0 olur
+  // (fulfill anında carrier'a göre ayarlanır).
   cargo_fee: model.number().default(0),
+  // Desi-bazlı platform (anlaşmalı) kargo ücreti — split anında hesaplanır ve
+  // sabit kalır. cargo_fee bundan türetilir; satıcı firma değiştirip tekrar
+  // kargolarsa ücret buradan geri yüklenebilir.
+  platform_cargo_fee: model.number().default(0),
   item_count: model.number().default(0),
   // İade agregaları (order.return_received ile güncellenir). Net ödenecek =
   // seller_earning - returned_earning.
@@ -51,6 +58,9 @@ const SellerOrder = model.define("seller_order", {
   eligible_at: model.dateTime().nullable(),
   paid_at: model.dateTime().nullable(),
   fulfilled_at: model.dateTime().nullable(),
+  // PayTR Pazaryeri transfer (escrow serbest bırakma) referansı — payout anında
+  // submitPlatformTransfer ile üretilir; başarılı transferin trans_id'si.
+  payout_trans_id: model.text().nullable(),
   note: model.text().nullable(),
 })
 

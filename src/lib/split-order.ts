@@ -139,7 +139,11 @@ export async function splitOrder(container: any, orderId: string): Promise<numbe
       commission_rate: effectiveRate,
       commission_amount,
       seller_earning: subtotal - commission_amount,
+      // Hibrit kargo: split anında varsayılan/anlaşmalı (Yurtiçi) kabul edilir →
+      // cargo_fee = platform ücreti. Satıcı kendi kargosuyla kargolarsa fulfill
+      // anında cargo_fee 0'a çekilir; platform_cargo_fee sabit kalır.
       cargo_fee,
+      platform_cargo_fee: cargo_fee,
       item_count: snapshot.reduce((s, x) => s + x.quantity, 0),
       items: snapshot,
       shipping_address: order.shipping_address || null,

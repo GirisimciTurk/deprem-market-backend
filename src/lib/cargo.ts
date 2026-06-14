@@ -6,9 +6,23 @@
  * (kopyası) storefront bu mantığı kullanır.
  *
  * Yeni bir firma eklemek için CARRIERS'a bir satır eklemen yeterli.
+ *
+ * Hibrit satıcı kargosu: DEFAULT_CARRIER (Yurtiçi) "anlaşmalı kargo"dur —
+ * satıcının hak edişinden kargo ücreti düşülür. Diğer firmalar satıcının
+ * kendi anlaşmasıdır → kargo ücreti düşülmez (bkz. isPlatformCarrier +
+ * vendors/orders/[id]/fulfill).
  */
 
-export type CarrierCode = "yurtici" | "mng" | "ptt"
+export type CarrierCode =
+  | "yurtici"
+  | "aras"
+  | "mng"
+  | "surat"
+  | "ptt"
+  | "ups"
+  | "sendeo"
+  | "hepsijet"
+  | "diger"
 
 export interface CarrierDef {
   code: CarrierCode
@@ -16,41 +30,104 @@ export interface CarrierDef {
   name: string
   /**
    * Takip URL şablonu. `{code}` yer tutucusu takip numarasıyla değiştirilir.
-   * Boş ise (manual) takip linki üretilmez.
+   * Boş ise (ör. "Diğer") takip linki üretilmez; satıcı linki elle girer.
    */
   trackingUrlTemplate: string
 }
 
-/**
- * Yurtiçi takip URL şablonu. Yurtiçi'nin kamuya açık takip sayfası sözleşmeye
- * göre değişebildiği için env ile override edilebilir.
- */
-const YURTICI_TRACKING_URL_TEMPLATE =
-  process.env.YURTICI_TRACKING_URL_TEMPLATE ||
-  "https://www.yurticikargo.com/tr/online-servisler/gonderi-sorgula?code={code}"
+// Takip URL şablonları env ile override edilebilir (firmaların kamuya açık
+// sorgu sayfaları zaman zaman değişir). Örn: ARAS_TRACKING_URL_TEMPLATE.
+const tpl = (code: string, def: string): string =>
+  process.env[`${code.toUpperCase()}_TRACKING_URL_TEMPLATE`] || def
 
 export const CARRIERS: Record<CarrierCode, CarrierDef> = {
   yurtici: {
     code: "yurtici",
     name: "Yurtiçi Kargo",
-    trackingUrlTemplate: YURTICI_TRACKING_URL_TEMPLATE,
+    trackingUrlTemplate: tpl(
+      "yurtici",
+      "https://www.yurticikargo.com/tr/online-servisler/gonderi-sorgula?code={code}"
+    ),
+  },
+  aras: {
+    code: "aras",
+    name: "Aras Kargo",
+    trackingUrlTemplate: tpl(
+      "aras",
+      "https://kargotakip.araskargo.com.tr/?code={code}"
+    ),
   },
   mng: {
     code: "mng",
     name: "MNG Kargo",
-    trackingUrlTemplate:
-      "https://service.mngkargo.com.tr/iframe/iframe.aspx?KODNO={code}",
+    trackingUrlTemplate: tpl(
+      "mng",
+      "https://service.mngkargo.com.tr/iframe/iframe.aspx?KODNO={code}"
+    ),
+  },
+  surat: {
+    code: "surat",
+    name: "Sürat Kargo",
+    trackingUrlTemplate: tpl(
+      "surat",
+      "https://www.suratkargo.com.tr/KargoTakip/?kargotakipno={code}"
+    ),
   },
   ptt: {
     code: "ptt",
     name: "PTT Kargo",
-    trackingUrlTemplate: "https://gonderitakip.ptt.gov.tr/Track/Verify?q={code}",
+    trackingUrlTemplate: tpl(
+      "ptt",
+      "https://gonderitakip.ptt.gov.tr/Track/Verify?q={code}"
+    ),
+  },
+  ups: {
+    code: "ups",
+    name: "UPS Kargo",
+    trackingUrlTemplate: tpl(
+      "ups",
+      "https://www.ups.com/track?loc=tr_TR&tracknum={code}"
+    ),
+  },
+  sendeo: {
+    code: "sendeo",
+    name: "Sendeo",
+    trackingUrlTemplate: tpl(
+      "sendeo",
+      "https://www.sendeo.com.tr/gonderi-takip?code={code}"
+    ),
+  },
+  hepsijet: {
+    code: "hepsijet",
+    name: "Hepsijet",
+    trackingUrlTemplate: tpl(
+      "hepsijet",
+      "https://www.hepsijet.com/gonderi-takibi?code={code}"
+    ),
+  },
+  // "Diğer": listede olmayan firma. Takip linki üretilmez; satıcı isterse
+  // takip URL'sini elle girer (vendors/orders/[id]/fulfill → tracking_url).
+  diger: {
+    code: "diger",
+    name: "Diğer",
+    trackingUrlTemplate: "",
   },
 }
 
-/** Varsayılan kargo firması (env ile override edilebilir). */
+/** Tüm geçerli kargo kodları (zod enum, doğrulama vb. için). */
+export const CARRIER_CODES = Object.keys(CARRIERS) as CarrierCode[]
+
+/** Varsayılan / "anlaşmalı" kargo firması (env ile override edilebilir). */
 export const DEFAULT_CARRIER: CarrierCode =
   (process.env.DEFAULT_CARGO_CARRIER as CarrierCode) || "yurtici"
+
+/**
+ * Bu firma platformun "anlaşmalı kargosu" mu? Anlaşmalı kargoda satıcının
+ * hak edişinden kargo ücreti düşülür; satıcının kendi kargosunda düşülmez.
+ */
+export function isPlatformCarrier(code?: string | null): boolean {
+  return code === DEFAULT_CARRIER
+}
 
 /**
  * Bir fulfillment provider_id'sinden ("yurtici_kargo", "manual_manual" ...)

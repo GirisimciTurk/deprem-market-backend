@@ -4,12 +4,22 @@ import { MARKETPLACE_MODULE } from "../../../../../modules/marketplace"
 import MarketplaceModuleService from "../../../../../modules/marketplace/service"
 import { resolveSeller } from "../../../_lib/resolve-seller"
 import { getHakedisDays } from "../../../../../lib/settlement"
-import { CARRIERS, getTrackingUrl, DEFAULT_CARRIER, CarrierCode } from "../../../../../lib/cargo"
+import {
+  CARRIERS,
+  CARRIER_CODES,
+  getTrackingUrl,
+  DEFAULT_CARRIER,
+  isPlatformCarrier,
+  CarrierCode,
+} from "../../../../../lib/cargo"
 import { sendSellerShipmentEmail } from "../../../../../lib/seller-cargo-mail"
 
 const bodySchema = z.object({
-  carrier: z.enum(["yurtici", "mng", "ptt"]).optional(),
+  carrier: z.enum(CARRIER_CODES as [CarrierCode, ...CarrierCode[]]).optional(),
   tracking_number: z.string().trim().max(64).optional().nullable(),
+  // "Diğer" firmada satıcının elle gireceği takip linki (diğer firmalarda
+  // şablondan üretilir, bu alan yok sayılır).
+  tracking_url: z.string().trim().url().max(500).optional().nullable(),
 })
 
 /**
@@ -43,7 +53,21 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     ((resolved.seller as any).default_carrier as CarrierCode) ||
     DEFAULT_CARRIER
   const trackingNumber = (parsed.data.tracking_number || "").trim() || null
-  const trackingUrl = trackingNumber ? getTrackingUrl(trackingNumber, carrier) : null
+  // "Diğer" firmada takip linki şablondan üretilemez → satıcının girdiği URL
+  // kullanılır. Tanımlı firmalarda link cargo.ts şablonundan üretilir.
+  const trackingUrl =
+    carrier === "diger"
+      ? (parsed.data.tracking_url || "").trim() || null
+      : trackingNumber
+      ? getTrackingUrl(trackingNumber, carrier)
+      : null
+
+  // HİBRİT KARGO: anlaşmalı kargoda (Yurtiçi) platform kargo ücreti hak edişten
+  // düşülür; satıcı kendi kargosuyla gönderirse düşülmez (cargo_fee = 0).
+  // platform_cargo_fee split anında sabitlenir → firma değişiminde geri yüklenir.
+  const cargoFee = isPlatformCarrier(carrier)
+    ? Number((so as any).platform_cargo_fee ?? (so as any).cargo_fee ?? 0)
+    : 0
 
   // İdempotent: zaten kargolanmışsa hakediş saatini (fulfilled_at/eligible_at)
   // SIFIRLAMA — yalnız kargo firması/takip bilgisini güncelle. Aksi halde tekrar
@@ -56,6 +80,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     carrier,
     tracking_number: trackingNumber,
     tracking_url: trackingUrl,
+    cargo_fee: cargoFee,
   }
   if (!alreadyFulfilled) {
     patch.fulfilled_at = now
