@@ -2,6 +2,7 @@ import { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
 import { Modules } from "@medusajs/framework/utils"
 import { sendMail } from "../lib/mailer"
 import { writeEmailPreview } from "../lib/email-preview"
+import { sendOrderPush } from "../lib/order-push"
 
 type OrderPlacedEvent = {
   id: string
@@ -211,6 +212,9 @@ export default async function orderPlacedHandler({
   } else {
     logger.error(`[OrderPlacedSubscriber] SMTP dispatch failed (retry sonrası): ${result.error}`)
   }
+
+  // Web push: giriş yapmış müşteriye "siparişiniz alındı" bildirimi (mailin yanında).
+  await sendOrderPush(container, orderId, "placed")
 
   // Önizleme HTML'i — proje DIŞINA (OS temp) yazılır; aksi halde dev watcher restart olur.
   const preview = writeEmailPreview(`order-${order.display_id || order.id}.html`, emailHtml)

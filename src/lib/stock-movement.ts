@@ -5,6 +5,7 @@ import {
 } from "@medusajs/medusa/core-flows"
 import { STOCK_MOVEMENT_MODULE } from "../modules/stock_movement"
 import type StockMovementModuleService from "../modules/stock_movement/service"
+import { notifyBackInStock } from "./back-in-stock"
 
 export type MovementType =
   | "sale"
@@ -154,6 +155,13 @@ export async function setStockedQuantity(
       },
     })
   }
+
+  // "Stoğa geldi" tespiti: stok 0 → pozitife geçtiyse, bu varyanta "haber ver"
+  // diyen abonelere push gönder. Hata olsa bile stok güncelleme akışı kırılmaz.
+  if ((existing?.stocked_quantity ?? 0) <= 0 && target > 0) {
+    await notifyBackInStock(container, inventoryItemId)
+  }
+
   return target
 }
 

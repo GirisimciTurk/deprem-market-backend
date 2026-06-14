@@ -1,6 +1,7 @@
 import { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { sendOrderCanceledEmail } from "../lib/order-canceled-mail"
+import { sendOrderPush } from "../lib/order-push"
 import { MARKETPLACE_MODULE } from "../modules/marketplace"
 
 /**
@@ -66,6 +67,9 @@ export default async function orderCanceledHandler({
   }
 
   await sendOrderCanceledEmail(container, orderId, totalRefundedMinor, currencyCode)
+
+  // Web push: giriş yapmış müşteriye "siparişiniz iptal edildi" bildirimi.
+  await sendOrderPush(container, orderId, "canceled")
 
   // Sipariş iptal edildi → bu siparişin seller_order'larını "canceled" yap ve
   // kargo ücretini sıfırla (gönderim yok). Böylece iptal edilen sipariş satıcının

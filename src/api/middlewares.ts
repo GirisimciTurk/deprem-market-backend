@@ -169,6 +169,17 @@ export default defineMiddlewares({
       middlewares: [authenticate("customer", ["session", "bearer"])],
     },
     {
+      // Web push abone/abonelikten-çık/stok-uyarı: giriş yapmışsa müşteri id'si
+      // eklenir (sipariş bildirimleri için), misafir de abone olabilir.
+      method: ["POST"],
+      matcher: "/store/push/*",
+      middlewares: [
+        authenticate("customer", ["session", "bearer"], {
+          allowUnauthenticated: true,
+        }),
+      ],
+    },
+    {
       // Müşteri↔satıcı mesajlaşma: tüm uçlar giriş yapmış müşteri gerektirir
       // (her uçta ayrıca konuşma sahipliği doğrulanır).
       matcher: "/store/conversations",

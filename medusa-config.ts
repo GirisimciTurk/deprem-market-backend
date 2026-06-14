@@ -167,5 +167,8 @@ module.exports = defineConfig({
     invoicing: {
       resolve: "./src/modules/invoicing",
     },
+    push: {
+      resolve: "./src/modules/push",
+    },
   },
 })

@@ -2,6 +2,7 @@ import { Modules } from "@medusajs/framework/utils"
 import { getTrackingUrl, resolveCarrier } from "./cargo"
 import { sendMail } from "./mailer"
 import { writeEmailPreview } from "./email-preview"
+import { sendOrderPush } from "./order-push"
 
 export type CargoStatus = "shipped" | "delivered"
 
@@ -74,6 +75,10 @@ export async function sendCargoStatusEmail(
     )
     return
   }
+
+  // Web push: giriş yapmış müşteriye "kargoda/teslim edildi" bildirimi (mailin
+  // yanında). Önizleme dosyası yazımından (dev-watcher restart'ı) ÖNCE çalışır.
+  await sendOrderPush(container, order.id, status)
 
   // Sipariş kalemlerini Order Module Service'ten DİREKT oku — query.graph'ın
   // fulfillment→order.items yolu quantity'yi güvenilir döndürmüyordu
