@@ -1,6 +1,7 @@
 import { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { sendOrderCanceledEmail } from "../lib/order-canceled-mail"
+import { MARKETPLACE_MODULE } from "../modules/marketplace"
 
 /**
  * Sipariş iptal edildiğinde müşteriye "Siparişiniz İptal Edildi" e-postası gönderir
@@ -65,6 +66,23 @@ export default async function orderCanceledHandler({
   }
 
   await sendOrderCanceledEmail(container, orderId, totalRefundedMinor, currencyCode)
+
+  // Sipariş iptal edildi → bu siparişin seller_order'larını "canceled" yap ve
+  // kargo ücretini sıfırla (gönderim yok). Böylece iptal edilen sipariş satıcının
+  // ödenecek bakiyesine/kazancına katkı vermez (net hesapları canceled'ı hariç tutar).
+  try {
+    const marketplace: any = container.resolve(MARKETPLACE_MODULE)
+    const sellerOrders = await marketplace.listSellerOrders({ order_id: orderId }, { take: 100 })
+    const toCancel = (sellerOrders as any[]).filter((so) => so.fulfillment_status !== "canceled")
+    if (toCancel.length > 0) {
+      await marketplace.updateSellerOrders(
+        toCancel.map((so: any) => ({ id: so.id, fulfillment_status: "canceled", cargo_fee: 0 })) as any
+      )
+      logger.info(`[OrderCanceled] ${toCancel.length} seller_order iptal edildi (sipariş ${orderId}).`)
+    }
+  } catch (e: any) {
+    logger.error(`[OrderCanceled] seller_order iptali başarısız: ${e?.message}`)
+  }
 }
 
 export const config: SubscriberConfig = {

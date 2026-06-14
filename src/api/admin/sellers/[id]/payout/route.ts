@@ -23,7 +23,11 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
   const marketplace: MarketplaceModuleService = req.scope.resolve(MARKETPLACE_MODULE)
 
-  const filters: Record<string, unknown> = { seller_id: sellerId, payout_status: "eligible" }
+  const filters: Record<string, unknown> = {
+    seller_id: sellerId,
+    payout_status: "eligible",
+    fulfillment_status: { $ne: "canceled" },
+  }
   if (parsed.data.order_ids?.length) filters.id = parsed.data.order_ids
 
   const pending = await marketplace.listSellerOrders(filters, { take: 1000 })
@@ -37,9 +41,11 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   )
 
   // Net ödenen = seller_earning - returned_earning - cargo_fee (iade + kargo düşülmüş).
+  // Per-sipariş max(0,...): bir siparişin negatifi (tam iade + kargo) başka siparişin
+  // ödemesini eksiltmesin.
   const paid_amount = pending.reduce(
     (s: number, o: any) =>
-      s + (Number(o.seller_earning ?? 0) - Number(o.returned_earning ?? 0) - Number(o.cargo_fee ?? 0)),
+      s + Math.max(0, Number(o.seller_earning ?? 0) - Number(o.returned_earning ?? 0) - Number(o.cargo_fee ?? 0)),
     0
   )
   return res.json({ paid_count: pending.length, paid_amount })

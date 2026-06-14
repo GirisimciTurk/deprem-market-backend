@@ -4,6 +4,7 @@ import { resolveSeller } from "../../_lib/resolve-seller"
 import { createVendorProduct } from "../../_lib/create-vendor-product"
 import { getPendingRequiredContracts } from "../../../../lib/seller-contracts"
 import { notifyAdmins } from "../../../../lib/notify"
+import { vendorBulkLimiter, enforceRateLimit } from "../../../../lib/rate-limiter"
 
 const MAX_ROWS = 500
 
@@ -32,6 +33,7 @@ const bulkSchema = z.object({
  * satır dizisi alır. Yalnız aktif satıcılar kullanabilir. En fazla 500 satır.
  */
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
+  if (await enforceRateLimit(vendorBulkLimiter, req, res)) return
   const resolved = await resolveSeller(req)
   if (!resolved) return res.status(401).json({ message: "Yetkisiz." })
   if (resolved.seller.status !== "active") {

@@ -32,7 +32,12 @@ type Options = Record<string, unknown>
  *    gönderi açıp takip numarası/etiketi otomatik döner (client.ts doldurulunca).
  */
 class YurticiKargoFulfillmentProviderService extends AbstractFulfillmentProviderService {
-  static identifier = "yurtici"
+  // ÖNEMLİ: provider_id GERİYE DÖNÜK UYUMLULUK için "aras_kargo" kalır (identifier
+  // "aras" + config id "kargo"). Mevcut siparişlerin fulfillment'ları ve shipping
+  // option'ları "aras_kargo"'ya bağlı; identifier'ı değiştirmek bunları çözülemez
+  // (fp_aras_kargo) yapıp iade/checkout'u bozar. Bu yalnızca GÖRÜNMEZ bir iç kimlik —
+  // müşteri/satıcıya görünen kargo firması, takip linki ve seçenek adları Yurtiçi'dir.
+  static identifier = "aras"
 
   protected logger_: Logger
   protected options_: Options

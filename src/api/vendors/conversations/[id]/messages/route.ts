@@ -4,6 +4,7 @@ import { MARKETPLACE_MODULE } from "../../../../../modules/marketplace"
 import MarketplaceModuleService from "../../../../../modules/marketplace/service"
 import { resolveSeller } from "../../../_lib/resolve-seller"
 import { postMessage, markConversationRead } from "../../../../../lib/conversations"
+import { vendorMessageLimiter, enforceRateLimit } from "../../../../../lib/rate-limiter"
 
 /** Konuşmanın bu satıcıya ait olduğunu doğrular; değilse null. */
 async function ownedBySeller(
@@ -58,6 +59,7 @@ const sendSchema = z.object({ body: z.string().trim().min(1).max(2000) })
 
 /** POST /vendors/conversations/:id/messages — satıcı müşteriye yanıt yazar. */
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
+  if (await enforceRateLimit(vendorMessageLimiter, req, res)) return
   const resolved = await resolveSeller(req)
   if (!resolved) return res.status(401).json({ message: "Yetkisiz." })
 

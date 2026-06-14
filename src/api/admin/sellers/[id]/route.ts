@@ -23,7 +23,7 @@ const updateSchema = z.object({
 const sumField = (arr: any[], k: string) => arr.reduce((s, x) => s + Number(x[k] ?? 0), 0)
 const netEarning = (arr: any[]) =>
   arr.reduce(
-    (s, x) => s + (Number(x.seller_earning ?? 0) - Number(x.returned_earning ?? 0) - Number(x.cargo_fee ?? 0)),
+    (s, x) => s + Math.max(0, Number(x.seller_earning ?? 0) - Number(x.returned_earning ?? 0) - Number(x.cargo_fee ?? 0)),
     0
   )
 
@@ -63,7 +63,10 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   }
 
   // Tüm alt-siparişler (özet + payout bakiyeleri).
-  const orders = await marketplace.listSellerOrders({ seller_id: sellerId }, { take: 2000 })
+  const orders = await marketplace.listSellerOrders(
+    { seller_id: sellerId, fulfillment_status: { $ne: "canceled" } },
+    { take: 2000 }
+  )
   const currency = (orders[0] as any)?.currency_code || "try"
   const fulfilled = orders.filter((o: any) => o.fulfillment_status === "fulfilled")
   const pendingShip = orders.filter((o: any) => o.fulfillment_status === "pending")

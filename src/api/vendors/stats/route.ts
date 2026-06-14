@@ -35,25 +35,25 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const now = new Date()
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
   const monthOrders = await marketplace.listSellerOrders(
-    { seller_id: resolved.seller.id, created_at: { $gte: monthStart } },
+    { seller_id: resolved.seller.id, created_at: { $gte: monthStart }, fulfillment_status: { $ne: "canceled" } },
     { take: 1000 }
   )
   // Net = seller_earning - returned_earning - cargo_fee (iade + kargo düşülmüş).
   const netSum = (arr: any[]) =>
     arr.reduce(
       (s: number, o: any) =>
-        s + (Number(o.seller_earning ?? 0) - Number(o.returned_earning ?? 0) - Number(o.cargo_fee ?? 0)),
+        s + Math.max(0, Number(o.seller_earning ?? 0) - Number(o.returned_earning ?? 0) - Number(o.cargo_fee ?? 0)),
       0
     )
   const month_earnings = netSum(monthOrders)
 
   // Bakiyeler: pending (hakediş bekleyen) + eligible (ödenebilir).
   const pendingPayout = await marketplace.listSellerOrders(
-    { seller_id: resolved.seller.id, payout_status: "pending" },
+    { seller_id: resolved.seller.id, payout_status: "pending", fulfillment_status: { $ne: "canceled" } },
     { take: 1000 }
   )
   const eligiblePayout = await marketplace.listSellerOrders(
-    { seller_id: resolved.seller.id, payout_status: "eligible" },
+    { seller_id: resolved.seller.id, payout_status: "eligible", fulfillment_status: { $ne: "canceled" } },
     { take: 1000 }
   )
   const pending_balance = netSum(pendingPayout)

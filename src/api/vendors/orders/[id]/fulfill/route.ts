@@ -45,18 +45,23 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const trackingNumber = (parsed.data.tracking_number || "").trim() || null
   const trackingUrl = trackingNumber ? getTrackingUrl(trackingNumber, carrier) : null
 
-  // Kargolama anından itibaren hakediş bekleme süresi başlar.
+  // İdempotent: zaten kargolanmışsa hakediş saatini (fulfilled_at/eligible_at)
+  // SIFIRLAMA — yalnız kargo firması/takip bilgisini güncelle. Aksi halde tekrar
+  // "kargolandı" basmak ödeme/hakediş tarihini ileri kaydırırdı (ödenmişte bile).
+  const alreadyFulfilled = so.fulfillment_status === "fulfilled" && !!(so as any).fulfilled_at
   const now = new Date()
-  const eligibleAt = new Date(now.getTime() + getHakedisDays() * 24 * 60 * 60 * 1000)
-  const updated = await marketplace.updateSellerOrders({
+  const patch: Record<string, unknown> = {
     id: so.id,
     fulfillment_status: "fulfilled",
-    fulfilled_at: now,
-    eligible_at: eligibleAt,
     carrier,
     tracking_number: trackingNumber,
     tracking_url: trackingUrl,
-  } as any)
+  }
+  if (!alreadyFulfilled) {
+    patch.fulfilled_at = now
+    patch.eligible_at = new Date(now.getTime() + getHakedisDays() * 24 * 60 * 60 * 1000)
+  }
+  const updated = await marketplace.updateSellerOrders(patch as any)
 
   // Takip numarası girildiyse müşteriye kargo maili gönder (hata akışı bozmasın).
   if (trackingNumber) {

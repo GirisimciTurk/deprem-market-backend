@@ -137,6 +137,10 @@ export const resellerLimiter = new RateLimiter(3, 3600000, "reseller")
 export const returnRequestLimiter = new RateLimiter(5, 60000, "return-request")
 // Google hesap bağlama: dakikada 5
 export const googleLinkLimiter = new RateLimiter(5, 60000, "google-link")
+// Satıcı (vendor) ağır/yan-etkili uçları: toplu ürün yükleme (500 satır + workflow)
+// ve mesajlaşma (mail tetikler). Kimlik doğrulamalı ama suistimale karşı IP limiti.
+export const vendorBulkLimiter = new RateLimiter(5, 60000, "vendor-bulk")
+export const vendorMessageLimiter = new RateLimiter(30, 60000, "vendor-message")
 
 /**
  * Ortak yardımcı: istek IP'si için rate-limit uygula. Limitlenmişse 429 yazıp true döner;

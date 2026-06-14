@@ -56,7 +56,7 @@ export function computeCargoFee(tariff: CargoTariff, desi: number): number {
 /** Aktif tarifeyi getirir; yoksa varsayılanı oluşturup döner (singleton). */
 export async function getOrCreateCargoTariff(container: any): Promise<{ id: string; tiers: CargoTier[]; per_extra_fee: number }> {
   const marketplace: MarketplaceModuleService = container.resolve(MARKETPLACE_MODULE)
-  const existing = await marketplace.listCargoTariffs({}, { take: 1 })
+  const existing = await marketplace.listCargoTariffs({}, { take: 1, order: { created_at: "ASC" } })
   if (existing.length > 0) return existing[0] as any
   const created = await marketplace.createCargoTariffs({
     tiers: DEFAULT_CARGO_TARIFF.tiers,
@@ -68,7 +68,7 @@ export async function getOrCreateCargoTariff(container: any): Promise<{ id: stri
 /** Tarifeyi salt-okunur getirir (yoksa varsayılan, DB'ye yazmaz). */
 export async function readCargoTariff(container: any): Promise<CargoTariff> {
   const marketplace: MarketplaceModuleService = container.resolve(MARKETPLACE_MODULE)
-  const existing = await marketplace.listCargoTariffs({}, { take: 1 })
+  const existing = await marketplace.listCargoTariffs({}, { take: 1, order: { created_at: "ASC" } })
   if (existing.length > 0) {
     const t = existing[0] as any
     return { tiers: t.tiers || DEFAULT_CARGO_TARIFF.tiers, per_extra_fee: Number(t.per_extra_fee ?? 0) }

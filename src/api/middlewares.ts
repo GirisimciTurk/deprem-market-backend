@@ -34,9 +34,11 @@ async function requireAdminRole(
       })
     }
     return next()
-  } catch {
-    // Rol çözümlenemezse akışı bloklama (auth zaten korur).
-    return next()
+  } catch (e: any) {
+    // FAIL-CLOSED: yalnız ADMIN_ONLY uçlara uygulanır; rol çözümlenemezse güvenli
+    // taraf REDDETMEKtir (deny-by-default).
+    try { req.scope.resolve("logger").error(`[requireAdminRole] reddedildi: ${e?.message}`) } catch {}
+    return res.status(403).json({ message: "Yetki doğrulanamadı, lütfen tekrar deneyin." })
   }
 }
 
@@ -90,6 +92,11 @@ const ADMIN_ONLY_MATCHERS = [
   "/admin/invoices*",
   "/admin/storefront-settings*",
   "/admin/order-refunds*",
+  // Stok/envanter mutasyonları (değer-etkili; kontrol merkezi modelinde satış
+  // operasyonu satıcı panelinde, bunlar legacy) — yalnız admin.
+  "/admin/stock-adjust*",
+  "/admin/inventory-counts*",
+  "/admin/inventory-transfers*",
 ]
 
 export default defineMiddlewares({

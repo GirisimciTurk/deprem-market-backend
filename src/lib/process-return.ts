@@ -46,11 +46,12 @@ async function groupReturnBySeller(container: any, returnId: string, useReceived
   const sellerOrders = await marketplace.listSellerOrders({ order_id: orderId }, { take: 100 })
   if (sellerOrders.length === 0) return null
 
-  // product_id → { sellerOrder, commission_rate }
-  const productMap = new Map<string, { so: any; commission_rate: number }>()
+  // product_id → { sellerOrder, snapshot line }. Snapshot kalem KENDİ komisyon
+  // oran/tutarını taşır (kategori-bazlı olabilir → harmanlanmış orandan farklı).
+  const productMap = new Map<string, { so: any; line: any }>()
   for (const so of sellerOrders as any[]) {
     for (const it of (so.items as any[]) || []) {
-      if (it.product_id) productMap.set(it.product_id, { so, commission_rate: num(so.commission_rate) })
+      if (it.product_id) productMap.set(it.product_id, { so, line: it })
     }
   }
 
@@ -65,14 +66,25 @@ async function groupReturnBySeller(container: any, returnId: string, useReceived
     if (qty <= 0) continue
     const unitPrice = num(ri.item?.unit_price)
     const lineTotal = unitPrice * qty
-    const commission = Math.round((lineTotal * match.commission_rate) / 100)
+    // Komisyon reversal'ı KALEM-BAZLI snapshot'tan, satışta alınanla birebir tutsun
+    // diye: orijinal kalem komisyonunu iade oranınca (qty/origQty) orantıla. Tam
+    // iadede satışta alınan komisyonun aynısı geri alınır; kısmi iadede orantılı.
+    // Snapshot yoksa kalemin kendi oranına, o da yoksa harmanlanmışa düş.
+    const line = match.line || {}
+    const origQty = num(line.quantity)
+    const origCommission = num(line.commission_amount)
+    const lineRate = line.commission_rate != null ? num(line.commission_rate) : num(match.so.commission_rate)
+    const commission =
+      origQty > 0 && origCommission >= 0
+        ? Math.round((origCommission * qty) / origQty)
+        : Math.round((lineTotal * lineRate) / 100)
 
     const key = match.so.id
     if (!groups.has(key)) {
       groups.set(key, {
         seller_order: match.so,
         seller_id: match.so.seller_id,
-        commission_rate: match.commission_rate,
+        commission_rate: num(match.so.commission_rate),
         lines: [] as ReturnedLine[],
         returned_subtotal: 0,
         returned_commission: 0,

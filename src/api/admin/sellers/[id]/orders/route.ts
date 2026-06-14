@@ -15,7 +15,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const marketplace: MarketplaceModuleService = req.scope.resolve(MARKETPLACE_MODULE)
 
   const filters: Record<string, unknown> = { seller_id: sellerId }
-  if (payout && ["pending", "paid"].includes(payout)) filters.payout_status = payout
+  if (payout && ["pending", "eligible", "paid"].includes(payout)) filters.payout_status = payout
 
   const [orders, count] = await marketplace.listAndCountSellerOrders(filters, {
     order: { created_at: "DESC" },
@@ -24,9 +24,12 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   })
 
   // Ödeme özeti (tüm alt-siparişler üzerinden). Net = kazanç - iade.
-  const all = await marketplace.listSellerOrders({ seller_id: sellerId }, { take: 1000 })
+  const all = await marketplace.listSellerOrders(
+    { seller_id: sellerId, fulfillment_status: { $ne: "canceled" } },
+    { take: 1000 }
+  )
   const sum = (arr: any[], k: string) => arr.reduce((s, x) => s + Number(x[k] ?? 0), 0)
-  const net = (arr: any[]) => arr.reduce((s, x) => s + (Number(x.seller_earning ?? 0) - Number(x.returned_earning ?? 0) - Number(x.cargo_fee ?? 0)), 0)
+  const net = (arr: any[]) => arr.reduce((s, x) => s + Math.max(0, Number(x.seller_earning ?? 0) - Number(x.returned_earning ?? 0) - Number(x.cargo_fee ?? 0)), 0)
   // pending = henüz hakediş etmedi (bekliyor); eligible = ödenebilir; paid = ödendi.
   const pending = all.filter((o: any) => o.payout_status === "pending")
   const eligible = all.filter((o: any) => o.payout_status === "eligible")

@@ -146,7 +146,17 @@ export async function splitOrder(container: any, orderId: string): Promise<numbe
     }
   })
 
-  await marketplace.createSellerOrders(sellerOrders as any)
+  try {
+    await marketplace.createSellerOrders(sellerOrders as any)
+  } catch (e: any) {
+    // (order_id, seller_id) unique index → eşzamanlı ikinci order.placed çift bölmeyi
+    // burada yakalar (app-içi kontrol race'i kaçırırsa DB son savunma hattı).
+    if (/unique|duplicate|UQ_seller_order/i.test(e?.message || "")) {
+      logger.warn(`[splitOrder] ${orderId} eşzamanlı çift bölme engellendi (unique).`)
+      return 0
+    }
+    throw e
+  }
   logger.info(`[splitOrder] ${orderId} → ${sellerOrders.length} alt-sipariş.`)
 
   // Her satıcıya "yeni sipariş" panel-içi bildirimi (best-effort).

@@ -2,6 +2,7 @@ import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
 import {
   createShippingOptionsWorkflow,
   deleteShippingOptionsWorkflow,
+  updateShippingOptionsWorkflow,
 } from "@medusajs/medusa/core-flows"
 
 /**
@@ -13,15 +14,21 @@ import {
  *  2. Eski İngilizce starter + eski Aras shipping option'larını temizler.
  *  3. Yurtiçi Standart / Hızlı / Ücretsiz Kargo seçeneklerini Türkiye zone'una kurar.
  */
-const CARGO_PROVIDER_ID = "yurtici_kargo"
+// provider_id GERİYE DÖNÜK UYUMLU "aras_kargo" (mevcut fulfillment/option'lar buna
+// bağlı; değiştirmek fp_aras_kargo çözümünü bozar). Görünen her şey Yurtiçi.
+const CARGO_PROVIDER_ID = "aras_kargo"
 const STARTER_OPTION_NAMES = ["Standard Shipping", "Express Shipping"]
 const CARGO_OPTION_NAMES = [
   "Yurtiçi Kargo - Standart",
   "Yurtiçi Kargo - Hızlı",
   "Ücretsiz Kargo",
 ]
-// Eski Aras isimleri — re-run'da temizlenir (Aras tamamen kaldırıldı).
-const LEGACY_ARAS_OPTION_NAMES = ["Aras Kargo - Standart", "Aras Kargo - Hızlı"]
+// Eski Aras isimli option'lar → Yurtiçi'ye YENİDEN ADLANDIRILIR (silinmez; sipariş
+// referanslarını + provider bağını korur). [eskiAd, yeniAd]
+const ARAS_RENAME: [string, string][] = [
+  ["Aras Kargo - Standart", "Yurtiçi Kargo - Standart"],
+  ["Aras Kargo - Hızlı", "Yurtiçi Kargo - Hızlı"],
+]
 // Tutarlar minor unit (kuruş): 50 TL = 5000.
 const MINOR = 100
 
@@ -82,10 +89,32 @@ export async function runCargoSetup(container: any): Promise<{ created: string[]
     logger.info(`[setup-cargo] Provider link zaten mevcut olabilir (atlanıyor): ${e?.message}`)
   }
 
-  const { data: existingOptions } = await query.graph({
+  let { data: existingOptions } = await query.graph({
     entity: "shipping_option",
     fields: ["id", "name", "provider_id"],
   })
+
+  // Eski "Aras Kargo - X" option'larını "Yurtiçi Kargo - X"e yeniden adlandır
+  // (silme yok → sipariş referansları + provider bağı korunur). Müşteri artık
+  // checkout'ta Aras görmez.
+  const renames = ARAS_RENAME.flatMap(([oldName, newName]) =>
+    (existingOptions as any[])
+      .filter((o) => o.name === oldName)
+      .map((o) => ({ id: o.id, name: newName }))
+  )
+  if (renames.length > 0) {
+    try {
+      await updateShippingOptionsWorkflow(container).run({ input: renames as any })
+      logger.info(`[setup-cargo] ${renames.length} eski Aras seçeneği Yurtiçi'ye yeniden adlandırıldı.`)
+      // Yerel listeyi güncelle ki create adımı duplicate üretmesin.
+      for (const r of renames) {
+        const opt = (existingOptions as any[]).find((o) => o.id === r.id)
+        if (opt) opt.name = r.name
+      }
+    } catch (e: any) {
+      logger.warn(`[setup-cargo] Aras→Yurtiçi yeniden adlandırma atlandı: ${e?.message}`)
+    }
+  }
 
   // GUARD: Sipariş tarafından kullanılan option SİLİNMEMELİ (fulfillment bozulur).
   const { data: ordersWithSO } = await query.graph({
@@ -99,7 +128,9 @@ export async function runCargoSetup(container: any): Promise<{ created: string[]
     }
   }
 
-  const removeNames = [...STARTER_OPTION_NAMES, ...LEGACY_ARAS_OPTION_NAMES, ...CARGO_OPTION_NAMES]
+  // Yalnız eski İngilizce starter + (yeniden kurulacak) Yurtiçi isimlerini temizlik
+  // adayı yap; Aras isimleri zaten yukarıda Yurtiçi'ye RENAME edildi (silinmez).
+  const removeNames = [...STARTER_OPTION_NAMES, ...CARGO_OPTION_NAMES]
   const removeIds = existingOptions
     .filter((o: any) => removeNames.includes(o.name) && !referencedOptionIds.has(o.id))
     .map((o: any) => o.id)

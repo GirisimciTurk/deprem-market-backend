@@ -16,7 +16,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   // Özet için tüm alt-siparişleri çek (satıcı başına sayı makul; gerekirse
   // ileride DB-agregasyonuna geçilir).
   const all = await marketplace.listSellerOrders(
-    { seller_id: resolved.seller.id },
+    { seller_id: resolved.seller.id, fulfillment_status: { $ne: "canceled" } },
     { order: { created_at: "DESC" }, take: 1000 }
   )
 
@@ -25,7 +25,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const net = (arr: any[]) =>
     arr.reduce(
       (s, x) =>
-        s + (Number(x.seller_earning ?? 0) - Number(x.returned_earning ?? 0) - Number(x.cargo_fee ?? 0)),
+        s + Math.max(0, Number(x.seller_earning ?? 0) - Number(x.returned_earning ?? 0) - Number(x.cargo_fee ?? 0)),
       0
     )
   const pending = all.filter((o: any) => o.payout_status === "pending")
