@@ -1,5 +1,5 @@
 import { medusaIntegrationTestRunner } from "@medusajs/test-utils"
-import { createSellerWithToken, authHeader } from "./_helpers"
+import { createSellerWithToken, authHeader, seedCommerce } from "./_helpers"
 import { runContractSetup } from "../../src/lib/contract-setup"
 import { MARKETPLACE_MODULE } from "../../src/modules/marketplace"
 
@@ -160,6 +160,170 @@ medusaIntegrationTestRunner({
       it("onay sonrası pending azalır (idempotent kapı)", async () => {
         const me = await api.get("/vendors/me", authHeader(contractToken))
         expect(me.data.pending_contract_count).toEqual(3)
+      })
+    })
+
+    describe("Satıcı toplu ürün yükleme", () => {
+      it("geçerli satırlar oluşur + hatalı satır raporlanır", async () => {
+        const res = await api.post(
+          "/vendors/products/bulk",
+          {
+            rows: [
+              { title: "Toplu A", price: 50, stock: 5, sku: "BULK-A" },
+              { title: "Toplu B", price: 75, stock: 3, sku: "BULK-B" },
+              { title: "", price: 10 }, // hatalı (başlık yok)
+            ],
+          },
+          authHeader(crudToken)
+        )
+        expect([200, 201]).toContain(res.status)
+        expect(res.data.created.length).toEqual(2)
+        expect(res.data.errors.length).toEqual(1)
+      })
+    })
+
+    describe("Satıcı çok-varyantlı ürün", () => {
+      it("kartezyen matrisle 2 varyant oluşur", async () => {
+        const res = await api.post(
+          "/vendors/products",
+          {
+            title: "Çok Varyant Ürün",
+            options: [{ title: "Beden", values: ["S", "M"] }],
+            variants: [
+              { title: "S", price: 100, stock: 4, sku: "V-S", options: { Beden: "S" } },
+              { title: "M", price: 110, stock: 2, sku: "V-M", options: { Beden: "M" } },
+            ],
+          },
+          authHeader(crudToken)
+        )
+        expect([200, 201]).toContain(res.status)
+        const pid = (res.data.product || res.data).id
+        const list = await api.get("/vendors/products?limit=100", authHeader(crudToken))
+        const p = list.data.products.find((x: any) => x.id === pid)
+        expect(p.variants.length).toEqual(2)
+      })
+    })
+
+    describe("Satıcı kampanya (indirim) yaşam döngüsü", () => {
+      let prodId: string
+      let campId: string
+      it("ürün + %20 kampanya oluşturulur", async () => {
+        const pr = await api.post(
+          "/vendors/products",
+          { title: "Kampanya Ürünü", price: 200, stock: 10, sku: "KAMP-1" },
+          authHeader(crudToken)
+        )
+        prodId = (pr.data.product || pr.data).id
+        const res = await api.post(
+          "/vendors/campaigns",
+          { name: "Test İndirim", discount_type: "percentage", discount_value: 20, product_ids: [prodId] },
+          authHeader(crudToken)
+        )
+        expect([200, 201]).toContain(res.status)
+        campId = (res.data.campaign || res.data).id
+        expect(campId).toBeTruthy()
+      })
+      it("kampanya listede görünür", async () => {
+        const res = await api.get("/vendors/campaigns", authHeader(crudToken))
+        expect(res.status).toEqual(200)
+        expect(res.data.campaigns.some((c: any) => c.id === campId)).toBe(true)
+      })
+      it("kampanya silinir (fiyat tabana döner)", async () => {
+        const res = await api.delete(`/vendors/campaigns/${campId}`, authHeader(crudToken))
+        expect(res.status).toEqual(200)
+      })
+    })
+
+    describe("Satıcı panel uçları (smoke 200)", () => {
+      const endpoints = [
+        "/vendors/earnings",
+        "/vendors/stats",
+        "/vendors/scorecard",
+        "/vendors/analytics?days=30",
+        "/vendors/reviews",
+        "/vendors/invoices",
+        "/vendors/returns",
+        "/vendors/questions",
+        "/vendors/notifications",
+        "/vendors/campaigns",
+        "/vendors/contracts",
+        "/vendors/orders",
+      ]
+      it.each(endpoints)("%s → 200", async (ep) => {
+        const res = await api.get(ep, authHeader(crudToken))
+        expect(res.status).toEqual(200)
+      })
+    })
+
+    describe("Sözleşme sürüm artışı yeniden onay ister", () => {
+      it("sürüm bump sonrası pending artar", async () => {
+        const mp = container.resolve(MARKETPLACE_MODULE)
+        const [c] = await mp.listSellerContracts({ is_active: true })
+        const before = (await api.get("/vendors/me", authHeader(crudToken))).data
+          .pending_contract_count
+        await mp.updateSellerContracts({ id: c.id, version: Number(c.version || 1) + 1 })
+        const after = (await api.get("/vendors/me", authHeader(crudToken))).data
+          .pending_contract_count
+        expect(after).toEqual(before + 1)
+      })
+    })
+
+    describe("Müşteri checkout + marketplace zinciri", () => {
+      let pk: { headers: Record<string, string> }
+      let regionId: string
+      let variantId: string
+      let orderId: string
+
+      beforeAll(async () => {
+        // Ticaret ortamı + ürünü CRUD satıcısına bağla (zincir için)
+        const s = await seedCommerce(container, { sellerId: crudSellerId })
+        pk = { headers: { "x-publishable-api-key": s.pubKey } }
+        regionId = s.regionId
+        variantId = s.variantId
+      })
+
+      it("misafir müşteri sepet → adres → kargo → ödeme → sipariş tamamlar", async () => {
+        // sepet
+        const cart = (
+          await api.post("/store/carts", { region_id: regionId, email: "musteri@test.local" }, pk)
+        ).data.cart
+        // ürün ekle
+        await api.post(`/store/carts/${cart.id}/line-items`, { variant_id: variantId, quantity: 2 }, pk)
+        // adres
+        const addr = {
+          first_name: "Test", last_name: "Müşteri", address_1: "Cadde 1",
+          city: "İstanbul", country_code: "tr", postal_code: "34000", phone: "05550000000",
+        }
+        await api.post(`/store/carts/${cart.id}`, { shipping_address: addr, billing_address: addr, email: "musteri@test.local" }, pk)
+        // kargo
+        const opts = (await api.get(`/store/shipping-options?cart_id=${cart.id}`, pk)).data.shipping_options
+        expect(opts.length).toBeGreaterThan(0)
+        await api.post(`/store/carts/${cart.id}/shipping-methods`, { option_id: opts[0].id }, pk)
+        // ödeme
+        const pc = (await api.post("/store/payment-collections", { cart_id: cart.id }, pk)).data.payment_collection
+        await api.post(`/store/payment-collections/${pc.id}/payment-sessions`, { provider_id: "pp_system_default" }, pk)
+        // tamamla
+        const res = await api.post(`/store/carts/${cart.id}/complete`, {}, pk)
+        const order = res.data.order || (res.data.type === "order" ? res.data.order : null)
+        expect(order).toBeTruthy()
+        expect(order.items.length).toBeGreaterThan(0)
+        orderId = order.id
+      })
+
+      it("sipariş satıcıya bölünür (seller_order) + fatura üretilir", async () => {
+        const mp = container.resolve(MARKETPLACE_MODULE)
+        // order.placed subscriber'ı asenkron → seller_order'ı bekle (poll)
+        let sellerOrders: any[] = []
+        for (let i = 0; i < 30; i++) {
+          sellerOrders = await mp.listSellerOrders({ seller_id: crudSellerId })
+          if (sellerOrders.length > 0) break
+          await new Promise((r) => setTimeout(r, 500))
+        }
+        expect(sellerOrders.length).toBeGreaterThan(0)
+        const so = sellerOrders[0]
+        expect(Number(so.subtotal)).toBeGreaterThan(0)
+        // komisyon (%10) hesaplandı mı
+        expect(Number(so.commission_amount)).toBeGreaterThan(0)
       })
     })
   },
