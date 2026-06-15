@@ -2,6 +2,8 @@ import { medusaIntegrationTestRunner } from "@medusajs/test-utils"
 import { createSellerWithToken, authHeader, seedCommerce } from "./_helpers"
 import { runContractSetup } from "../../src/lib/contract-setup"
 import { MARKETPLACE_MODULE } from "../../src/modules/marketplace"
+import { HAVAR_MODULE } from "../../src/modules/havar"
+import { settlePendingPayouts } from "../../src/lib/settlement"
 
 jest.setTimeout(300_000)
 
@@ -359,7 +361,6 @@ medusaIntegrationTestRunner({
       })
 
       it("hakediş süresi dolunca pending → eligible (settlement)", async () => {
-        const { settlePendingPayouts } = await import("../../src/lib/settlement")
         const mp = container.resolve(MARKETPLACE_MODULE)
         // Bekleme süresi dolmuş gibi eligible_at'i geçmişe çek
         await mp.updateSellerOrders({
@@ -512,6 +513,53 @@ medusaIntegrationTestRunner({
         expect(updated.status).toEqual("received")
         // ilgili seller_order'da iade kazancı geri alındı
         expect(Number(updated.returned_earning ?? 0)).toBeGreaterThanOrEqual(0)
+      })
+    })
+
+    describe("HAVAR (drone) ön alım / ön kiralama talebi", () => {
+      const pk = () => ({ headers: { "x-publishable-api-key": cPk.headers["x-publishable-api-key"] } })
+
+      it("ön alım talebi oluşturulur + kapı mekanizması kaydedilir", async () => {
+        const res = await api.post(
+          "/store/havar-requests",
+          {
+            type: "purchase",
+            full_name: "Drone Alıcı",
+            email: "havar-buy@test.local",
+            phone: "05551112233",
+            buyer_type: "family",
+            usage: "both",
+            quantity: 2,
+            want_door_mechanism: true,
+          },
+          pk()
+        )
+        expect([200, 201]).toContain(res.status)
+        const havar = container.resolve(HAVAR_MODULE)
+        const [rows] = await havar.listAndCountHavarRequests({ email: "havar-buy@test.local" })
+        expect(rows.length).toBeGreaterThan(0)
+        expect(rows[0].type).toEqual("purchase")
+        expect(rows[0].want_door_mechanism).toBe(true)
+      })
+
+      it("ön kiralama talebi oluşturulur (süre ile)", async () => {
+        const res = await api.post(
+          "/store/havar-requests",
+          { type: "rental", full_name: "Drone Kiracı", email: "havar-rent@test.local", usage: "human", rental_duration: "3 ay" },
+          pk()
+        )
+        expect([200, 201]).toContain(res.status)
+        const havar = container.resolve(HAVAR_MODULE)
+        const [rows] = await havar.listAndCountHavarRequests({ email: "havar-rent@test.local" })
+        expect(rows[0].type).toEqual("rental")
+        expect(rows[0].rental_duration).toEqual("3 ay")
+      })
+
+      it("geçersiz tip reddedilir (400)", async () => {
+        const res = await api
+          .post("/store/havar-requests", { type: "invalid", full_name: "X", email: "x@test.local" }, pk())
+          .catch((e: any) => e.response)
+        expect(res.status).toEqual(400)
       })
     })
   },

@@ -173,6 +173,9 @@ module.exports = defineConfig({
     reseller: {
       resolve: "./src/modules/reseller",
     },
+    havar: {
+      resolve: "./src/modules/havar",
+    },
     stock_movement: {
       resolve: "./src/modules/stock_movement",
     },

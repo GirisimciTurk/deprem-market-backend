@@ -61,8 +61,22 @@ export async function POST(
   const googleIdentity = authIdentity.provider_identities?.find(
     (pi) => pi.provider === "google"
   )
-  const email = (googleIdentity?.user_metadata as { email?: string } | undefined)
-    ?.email
+  const meta =
+    (googleIdentity?.user_metadata as Record<string, any> | undefined) || {}
+  const email = meta.email as string | undefined
+
+  // Ad-soyad doğrulanmış Google profilinden: given_name/family_name; yoksa name'i böl.
+  const fullName = (typeof meta.name === "string" ? meta.name : "").trim()
+  const first_name =
+    (typeof meta.given_name === "string" ? meta.given_name.trim() : "") ||
+    (fullName ? fullName.split(/\s+/).slice(0, -1).join(" ") || fullName : "") ||
+    undefined
+  const last_name =
+    (typeof meta.family_name === "string" ? meta.family_name.trim() : "") ||
+    (fullName && fullName.split(/\s+/).length > 1
+      ? fullName.split(/\s+/).slice(-1)[0]
+      : "") ||
+    undefined
 
   if (!email) {
     return res
@@ -91,7 +105,7 @@ export async function POST(
   // No existing account → create one and link it.
   const { result } = await createCustomerAccountWorkflow(req.scope).run({
     input: {
-      customerData: { email },
+      customerData: { email, first_name, last_name },
       authIdentityId: authContext.auth_identity_id,
     },
   })
