@@ -91,14 +91,33 @@ const variantSchema = z.object({
 const createSchema = z
   .object({
     title: z.string().min(1),
+    subtitle: z.string().optional().nullable(),
     description: z.string().optional().nullable(),
+    material: z.string().optional().nullable(),
     // Fiyat TRY, major birim (ör. 199.90) — kuruşa çevrilir. Tek-varyantta zorunlu.
     price: z.number().positive().optional(),
+    // İndirimsiz / liste fiyatı (üstü çizili gösterim). Satış fiyatından büyükse anlamlı.
+    original_price: z.number().positive().optional().nullable(),
     sku: z.string().optional().nullable(),
     barcode: z.string().optional().nullable(),
+    // Görseller: çoklu galeri (ilk = ana görsel). thumbnail geriye dönük uyumluluk için korunur.
     thumbnail: z.string().url().optional().nullable(),
+    images: z.array(z.string().url()).max(12).optional(),
+    category_ids: z.array(z.string()).max(10).optional(),
+    tags: z.array(z.string().min(1)).max(20).optional(),
+    // Detaylı anlatım blokları (foto + yazı) — ürün sayfasında sırayla gösterilir.
+    content_blocks: z
+      .array(z.object({ image: z.string().url().optional().nullable(), text: z.string().max(1200) }))
+      .max(12)
+      .optional(),
+    // Kargo / boyut (kg & cm).
     weight: z.number().positive().optional(),
+    length: z.number().positive().optional(),
+    width: z.number().positive().optional(),
+    height: z.number().positive().optional(),
     stock: z.number().int().min(0).optional(),
+    // "draft" = taslak (onaya gitmez), "proposed" = onaya gönder (varsayılan).
+    status: z.enum(["draft", "proposed"]).optional(),
     // Çok-varyant modu: ikisi de verilirse matris ürünü oluşturulur.
     options: z.array(z.object({ title: z.string().min(1), values: z.array(z.string().min(1)).min(1) })).optional(),
     variants: z.array(variantSchema).optional(),

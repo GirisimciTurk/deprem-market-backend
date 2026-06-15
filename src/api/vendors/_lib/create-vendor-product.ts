@@ -32,15 +32,35 @@ export type VendorVariantInput = {
 export type VendorProductInput = {
   title: string
   description?: string | null
+  /** Marka / kısa başlık (Medusa subtitle). */
+  subtitle?: string | null
+  /** Malzeme (örn: "Polyester", "Paslanmaz çelik"). */
+  material?: string | null
   thumbnail?: string | null
+  /** Görsel URL'leri — ilki ana görsel (thumbnail) olur. */
+  images?: string[] | null
+  /** Bağlanacak kategori id'leri. */
+  category_ids?: string[] | null
+  /** Etiketler (serbest metin). */
+  tags?: string[] | null
+  /** Detaylı anlatım blokları (foto + yazı). Ürün sayfasında sırayla render edilir. */
+  content_blocks?: { image?: string | null; text: string }[] | null
+  // --- Kargo / boyut (kg & cm; desi storefront/kargo için) ---
   weight?: number | null
+  length?: number | null
+  width?: number | null
+  height?: number | null
   // --- Tek-varyant modu (geriye dönük uyumlu) ---
   /** Fiyat TRY, major birim (ör. 199.90) — kuruşa çevrilir. */
   price?: number
+  /** İndirimsiz / liste fiyatı (TRY major). Verilirse üstü çizili gösterim için metadata.compare_at_price'a yazılır. */
+  original_price?: number | null
   sku?: string | null
   barcode?: string | null
   /** Açılış stoğu (adet). Verilirse varsayılan lokasyonda stok seviyesi açılır. */
   stock?: number | null
+  // --- Durum: taslak mı onaya mı? (varsayılan proposed = onay bekliyor) ---
+  status?: "draft" | "proposed"
   // --- Çok-varyant modu (options+variants verilirse öncelikli) ---
   options?: { title: string; values: string[] }[]
   variants?: VendorVariantInput[]
@@ -113,17 +133,50 @@ export async function createVendorProduct(
     if (input.stock != null) stockByTitle["Standart"] = Math.max(0, Math.floor(Number(input.stock)))
   }
 
+  // Görseller: çoklu galeri öncelikli; yoksa tekil thumbnail'a düş. İlk görsel
+  // ana görsel (thumbnail) kabul edilir.
+  const imageUrls = (input.images ?? []).map((u) => (u || "").trim()).filter(Boolean)
+  if (imageUrls.length === 0 && input.thumbnail) imageUrls.push(input.thumbnail)
+  const thumbnail = imageUrls[0]
+
+  const categoryIds = (input.category_ids ?? []).filter(Boolean)
+  const tagValues = (input.tags ?? []).map((t) => (t || "").trim()).filter(Boolean)
+
+  // İndirimli fiyat gösterimi: liste fiyatı satış fiyatından büyükse üstü çizili
+  // göstermek için metadata.compare_at_price'a (TRY major) yazılır.
+  const sellPrice = input.price != null ? Number(input.price) : undefined
+  const metadata: Record<string, unknown> = {}
+  if (input.original_price != null && sellPrice != null && Number(input.original_price) > sellPrice) {
+    metadata.compare_at_price = Number(input.original_price)
+  }
+  // Etiketler: Medusa native tag entity'si ayrı upsert gerektirir; veriyi
+  // kaybetmemek için metadata.tags'e (string dizisi) yazıyoruz.
+  if (tagValues.length > 0) metadata.tags = tagValues
+
+  // Detaylı anlatım blokları (foto + yazı) — ürün sayfasında sırayla gösterilir.
+  const blocks = (input.content_blocks ?? [])
+    .map((b) => ({ image: (b.image || "").trim() || null, text: (b.text || "").trim() }))
+    .filter((b) => b.text || b.image)
+  if (blocks.length > 0) metadata.content_blocks = blocks
+
   const { result } = await createProductsWorkflow(scope).run({
     input: {
       products: [
         {
           title: input.title,
+          subtitle: input.subtitle ?? undefined,
           description: input.description ?? undefined,
+          material: input.material ?? undefined,
           handle,
-          status: "proposed" as any,
-          thumbnail: input.thumbnail ?? undefined,
-          images: input.thumbnail ? [{ url: input.thumbnail }] : undefined,
+          status: (input.status ?? "proposed") as any,
+          thumbnail: thumbnail ?? undefined,
+          images: imageUrls.length > 0 ? imageUrls.map((url) => ({ url })) : undefined,
           weight: input.weight ?? undefined,
+          length: input.length ?? undefined,
+          width: input.width ?? undefined,
+          height: input.height ?? undefined,
+          category_ids: categoryIds.length > 0 ? categoryIds : undefined,
+          metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
           shipping_profile_id: shippingProfileId,
           options: optionsPayload,
           variants: variantsPayload,

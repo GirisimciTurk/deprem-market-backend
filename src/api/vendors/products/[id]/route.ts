@@ -1,6 +1,10 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
-import { updateProductsWorkflow, updateProductVariantsWorkflow } from "@medusajs/medusa/core-flows"
+import {
+  updateProductsWorkflow,
+  updateProductVariantsWorkflow,
+  createInventoryItemsWorkflow,
+} from "@medusajs/medusa/core-flows"
 import { z } from "zod"
 import { resolveSeller } from "../../_lib/resolve-seller"
 import { MARKETPLACE_MODULE } from "../../../../modules/marketplace"
@@ -13,6 +17,7 @@ async function ownsProduct(req: MedusaRequest, productId: string, sellerId: stri
     fields: [
       "id",
       "status",
+      "metadata",
       "seller.id",
       "variants.id",
       "variants.inventory_items.inventory_item_id",
@@ -24,16 +29,93 @@ async function ownsProduct(req: MedusaRequest, productId: string, sellerId: stri
   return product
 }
 
+/** GET /vendors/products/:id — düzenleme formu için ürünün tüm detayları. */
+export async function GET(req: MedusaRequest, res: MedusaResponse) {
+  const resolved = await resolveSeller(req)
+  if (!resolved) return res.status(401).json({ message: "Yetkisiz." })
+
+  const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
+  const { data } = await query.graph({
+    entity: "product",
+    fields: [
+      "id", "title", "subtitle", "description", "material", "thumbnail", "status",
+      "weight", "length", "width", "height", "metadata",
+      "images.url", "images.rank",
+      "categories.id", "categories.name",
+      "seller.id",
+      "variants.id", "variants.title", "variants.sku", "variants.barcode",
+      "variants.prices.amount", "variants.prices.currency_code",
+      "variants.options.value", "variants.options.option.title",
+      "variants.inventory_items.inventory.location_levels.stocked_quantity",
+      "options.id", "options.title", "options.values.value",
+    ],
+    filters: { id: req.params.id },
+  })
+  const product = data?.[0] as any
+  if (!product || product.seller?.id !== resolved.seller.id) {
+    return res.status(404).json({ message: "Ürün bulunamadı." })
+  }
+
+  // Varyantlara açılış stoğunu (lokasyon seviyeleri toplamı) ekle.
+  for (const v of product.variants ?? []) {
+    let qty = 0
+    for (const ii of v.inventory_items ?? []) {
+      for (const lvl of ii.inventory?.location_levels ?? []) {
+        qty += Number(lvl.stocked_quantity ?? 0)
+      }
+    }
+    v.inventory_quantity = qty
+  }
+  // Görselleri rank'a göre sırala (ilk = ana).
+  if (Array.isArray(product.images)) {
+    product.images.sort((a: any, b: any) => (a.rank ?? 0) - (b.rank ?? 0))
+  }
+
+  return res.json({ product })
+}
+
 const updateSchema = z.object({
   title: z.string().min(1).optional(),
+  subtitle: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
+  material: z.string().optional().nullable(),
   thumbnail: z.string().url().optional().nullable(),
+  // Çoklu görsel — verilirse thumbnail + images birlikte güncellenir (ilk = ana).
+  images: z.array(z.string().url()).max(12).optional(),
+  category_ids: z.array(z.string()).max(10).optional(),
+  tags: z.array(z.string().min(1)).max(20).optional(),
+  content_blocks: z
+    .array(z.object({ image: z.string().url().optional().nullable(), text: z.string().max(1200) }))
+    .max(12)
+    .optional(),
   price: z.number().positive().optional(),
+  // İndirimsiz / liste fiyatı → metadata.compare_at_price (boş/0 ⇒ kaldırılır).
+  original_price: z.number().nonnegative().optional().nullable(),
   weight: z.number().positive().optional(),
+  length: z.number().positive().optional(),
+  width: z.number().positive().optional(),
+  height: z.number().positive().optional(),
   sku: z.string().optional().nullable(),
   barcode: z.string().optional().nullable(),
   // Stok adedi — varsayılan lokasyondaki envanter seviyesi (yoksa açılır).
   stock: z.coerce.number().int().min(0).optional(),
+  // --- Çok-varyant düzenleme (verilirse tek-varyant alanları yok sayılır) ---
+  options: z
+    .array(z.object({ title: z.string().min(1), values: z.array(z.string().min(1)).min(1) }))
+    .optional(),
+  variants: z
+    .array(
+      z.object({
+        id: z.string().optional(),
+        title: z.string().optional(),
+        price: z.number().positive(),
+        sku: z.string().optional().nullable(),
+        barcode: z.string().optional().nullable(),
+        stock: z.coerce.number().int().min(0).optional(),
+        options: z.record(z.string(), z.string()),
+      })
+    )
+    .optional(),
 })
 
 /** POST /vendors/products/:id — satıcı kendi ürününü günceller. */
@@ -52,55 +134,175 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
   const update: Record<string, unknown> = { id: product.id }
   if (data.title !== undefined) update.title = data.title
+  if (data.subtitle !== undefined) update.subtitle = data.subtitle
   if (data.description !== undefined) update.description = data.description
-  if (data.thumbnail !== undefined) {
+  if (data.material !== undefined) update.material = data.material
+  if (data.weight !== undefined) update.weight = data.weight
+  if (data.length !== undefined) update.length = data.length
+  if (data.width !== undefined) update.width = data.width
+  if (data.height !== undefined) update.height = data.height
+  if (data.category_ids !== undefined) update.category_ids = data.category_ids
+
+  // Görseller: çoklu galeri öncelikli; yoksa tekil thumbnail (geriye dönük).
+  if (data.images !== undefined) {
+    update.images = data.images.map((url) => ({ url }))
+    update.thumbnail = data.images[0] ?? null
+  } else if (data.thumbnail !== undefined) {
     update.thumbnail = data.thumbnail
     update.images = data.thumbnail ? [{ url: data.thumbnail }] : []
   }
-  if (data.weight !== undefined) update.weight = data.weight
+
+  // metadata MERGE (mevcut alanları koru): etiketler + indirimsiz fiyat.
+  const existingMeta = (product.metadata ?? {}) as Record<string, unknown>
+  const metadata = { ...existingMeta }
+  let metaChanged = false
+  if (data.tags !== undefined) {
+    if (data.tags.length > 0) metadata.tags = data.tags
+    else delete metadata.tags
+    metaChanged = true
+  }
+  if (data.original_price !== undefined) {
+    if (data.original_price && data.original_price > 0) metadata.compare_at_price = data.original_price
+    else delete metadata.compare_at_price
+    metaChanged = true
+  }
+  if (data.content_blocks !== undefined) {
+    const blocks = data.content_blocks
+      .map((b) => ({ image: (b.image || "").trim() || null, text: (b.text || "").trim() }))
+      .filter((b) => b.text || b.image)
+    if (blocks.length > 0) metadata.content_blocks = blocks
+    else delete metadata.content_blocks
+    metaChanged = true
+  }
+  if (metaChanged) update.metadata = metadata
+
+  const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
+  const isMulti = Array.isArray(data.variants) && data.variants.length > 0
+
+  // Bir varyantın opsiyon eşlemesinden ("Beden=M|Renk=Kırmızı") kararlı anahtar.
+  const optKey = (m: Record<string, string>) =>
+    Object.entries(m || {})
+      .map(([k, v]) => `${k.trim()}=${String(v).trim()}`)
+      .sort()
+      .join("|")
+
+  if (isMulti) {
+    // Mevcut varyantları opsiyon-kombinasyonuna göre eşle (id'leri al ki güncellensin,
+    // yeniden oluşturulmasın). Eşleşmeyen gelen varyant yeni oluşturulur; payload'da
+    // olmayan mevcut varyant updateProductsWorkflow tarafından silinir.
+    const { data: ex } = await query.graph({
+      entity: "product",
+      fields: ["variants.id", "variants.options.value", "variants.options.option.title"],
+      filters: { id: product.id },
+    })
+    const existingVariants: any[] = (ex?.[0] as any)?.variants ?? []
+    const keyToId = new Map<string, string>()
+    for (const ev of existingVariants) {
+      const m: Record<string, string> = {}
+      for (const o of ev.options ?? []) m[o.option?.title ?? ""] = o.value
+      keyToId.set(optKey(m), ev.id)
+    }
+
+    update.options = (data.options ?? []).map((o) => ({ title: o.title.trim(), values: o.values }))
+    update.variants = data.variants!.map((v) => {
+      const id = v.id ?? keyToId.get(optKey(v.options))
+      return {
+        ...(id ? { id } : {}),
+        title: v.title?.trim() || Object.values(v.options).join(" / "),
+        options: v.options,
+        sku: v.sku?.trim() || null,
+        barcode: v.barcode?.trim() || null,
+        prices: [{ amount: Math.round(v.price * 100), currency_code: "try" }],
+      }
+    })
+  }
 
   await updateProductsWorkflow(req.scope).run({
     input: { products: [update as any] },
   })
 
-  // Fiyat / SKU / barkod: ilk varyantı güncelle (tek-varyant ürün modeli).
-  const variantId = product.variants?.[0]?.id
-  if (variantId && (data.price !== undefined || data.sku !== undefined || data.barcode !== undefined)) {
-    // Fiyat pricing modülü/price-set ile yönetilir → upsertProductVariants ile
-    // `prices` güncellemek MikroORM'da "fieldNames undefined" ile 500 verir.
-    // updateProductVariantsWorkflow prices'ı doğru işler (price_set döndürür).
-    const variantUpdate: Record<string, unknown> = {}
-    if (data.price !== undefined) {
-      variantUpdate.prices = [{ amount: Math.round(data.price * 100), currency_code: "try" }]
-    }
-    if (data.sku !== undefined) variantUpdate.sku = data.sku || null
-    if (data.barcode !== undefined) variantUpdate.barcode = data.barcode || null
-    await updateProductVariantsWorkflow(req.scope).run({
-      input: { selector: { id: variantId }, update: variantUpdate as any },
+  const { data: locations } = await query.graph({ entity: "stock_location", fields: ["id"] })
+  const locationId = locations?.[0]?.id
+  const inventory = req.scope.resolve(Modules.INVENTORY)
+
+  /** Bir envanter kalemi için varsayılan lokasyonda stok seviyesini ayarlar (yoksa açar). */
+  const setStock = async (invItemId: string, qty: number) => {
+    if (!invItemId || !locationId) return
+    const existing = await inventory.listInventoryLevels({
+      inventory_item_id: invItemId,
+      location_id: locationId,
     })
+    if (existing.length > 0) {
+      await inventory.updateInventoryLevels([
+        { inventory_item_id: invItemId, location_id: locationId, stocked_quantity: qty },
+      ])
+    } else {
+      await inventory.createInventoryLevels([
+        { inventory_item_id: invItemId, location_id: locationId, stocked_quantity: qty },
+      ])
+    }
   }
 
-  // Stok: varsayılan lokasyondaki envanter seviyesini güncelle (yoksa oluştur).
-  if (data.stock !== undefined) {
-    const invItemId = product.variants?.[0]?.inventory_items?.[0]?.inventory_item_id
-    const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
-    const { data: locations } = await query.graph({ entity: "stock_location", fields: ["id"] })
-    const locationId = locations?.[0]?.id
-    if (invItemId && locationId) {
-      const inventory = req.scope.resolve(Modules.INVENTORY)
-      const existing = await inventory.listInventoryLevels({
-        inventory_item_id: invItemId,
-        location_id: locationId,
-      })
-      if (existing.length > 0) {
-        await inventory.updateInventoryLevels([
-          { inventory_item_id: invItemId, location_id: locationId, stocked_quantity: data.stock },
-        ])
-      } else {
-        await inventory.createInventoryLevels([
-          { inventory_item_id: invItemId, location_id: locationId, stocked_quantity: data.stock },
-        ])
+  if (isMulti) {
+    // Güncel varyantları (opsiyon + envanter kalemi) çekip her birinin stoğunu ayarla.
+    const { data: after } = await query.graph({
+      entity: "product",
+      fields: [
+        "variants.id",
+        "variants.options.value",
+        "variants.options.option.title",
+        "variants.inventory_items.inventory_item_id",
+      ],
+      filters: { id: product.id },
+    })
+    const afterVariants: any[] = (after?.[0] as any)?.variants ?? []
+    const stockByKey = new Map<string, number>()
+    for (const v of data.variants!) {
+      if (v.stock != null) stockByKey.set(optKey(v.options), v.stock)
+    }
+    const link = req.scope.resolve(ContainerRegistrationKeys.LINK)
+    for (const av of afterVariants) {
+      const m: Record<string, string> = {}
+      for (const o of av.options ?? []) m[o.option?.title ?? ""] = o.value
+      const qty = stockByKey.get(optKey(m))
+      if (qty == null) continue
+      let invItemId = av.inventory_items?.[0]?.inventory_item_id
+      // Yeni eklenen varyant (ör. yeni beden) envanter kalemine sahip olmayabilir —
+      // updateProductsWorkflow bunu otomatik oluşturmaz. Yoksa oluşturup bağla.
+      if (!invItemId) {
+        const { result } = await createInventoryItemsWorkflow(req.scope).run({
+          input: { items: [{ sku: av.sku || undefined, title: av.title || undefined }] },
+        })
+        invItemId = (result as any[])[0]?.id
+        if (invItemId) {
+          await link.create({
+            [Modules.PRODUCT]: { variant_id: av.id },
+            [Modules.INVENTORY]: { inventory_item_id: invItemId },
+          })
+        }
       }
+      if (invItemId) await setStock(invItemId, qty)
+    }
+  } else {
+    // Tek-varyant: ilk varyantın fiyat/SKU/barkod + stoğu.
+    const variantId = product.variants?.[0]?.id
+    if (variantId && (data.price !== undefined || data.sku !== undefined || data.barcode !== undefined)) {
+      // Fiyat pricing modülü/price-set ile yönetilir → upsertProductVariants ile
+      // `prices` güncellemek MikroORM'da "fieldNames undefined" ile 500 verir.
+      // updateProductVariantsWorkflow prices'ı doğru işler (price_set döndürür).
+      const variantUpdate: Record<string, unknown> = {}
+      if (data.price !== undefined) {
+        variantUpdate.prices = [{ amount: Math.round(data.price * 100), currency_code: "try" }]
+      }
+      if (data.sku !== undefined) variantUpdate.sku = data.sku || null
+      if (data.barcode !== undefined) variantUpdate.barcode = data.barcode || null
+      await updateProductVariantsWorkflow(req.scope).run({
+        input: { selector: { id: variantId }, update: variantUpdate as any },
+      })
+    }
+    if (data.stock !== undefined) {
+      const invItemId = product.variants?.[0]?.inventory_items?.[0]?.inventory_item_id
+      if (invItemId) await setStock(invItemId, data.stock)
     }
   }
 

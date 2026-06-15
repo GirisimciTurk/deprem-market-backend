@@ -29,8 +29,9 @@ const USE_S3 = !!(
 
 const fileProvider = USE_S3
   ? {
-      resolve: "@medusajs/file-s3",
-      id: "s3",
+      // webp-s3: görseli ÖNCE WebP'e çevirir, SONRA R2/S3'e yükler (file-s3 webp yapmaz).
+      resolve: "./src/modules/file/providers/webp-s3",
+      id: "webp-s3",
       options: {
         file_url: process.env.S3_FILE_URL, // ör: https://<bucket>.s3.<region>.amazonaws.com
         access_key_id: process.env.S3_ACCESS_KEY_ID,

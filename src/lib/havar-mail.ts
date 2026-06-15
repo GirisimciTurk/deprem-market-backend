@@ -24,16 +24,16 @@ export async function sendHavarApprovedEmail(
 
   const greeting = request.full_name?.trim() || "Değerli Başvuru Sahibimiz"
   const tip = request.type === "rental" ? "ön kiralama" : "ön alım"
-  const subject = "HAVAR Talebiniz Alındı — En Kısa Sürede İletişime Geçeceğiz"
+  const subject = "HavarTek Talebiniz Alındı — En Kısa Sürede İletişime Geçeceğiz"
 
   const html = `
   <!DOCTYPE html>
-  <html><head><meta charset="utf-8"><title>HAVAR Talebiniz Alındı</title></head>
+  <html><head><meta charset="utf-8"><title>HavarTek Talebiniz Alındı</title></head>
   <body style="font-family:'Segoe UI',Tahoma,sans-serif;background:#f8fafc;margin:0;padding:0;color:#1e293b;">
     <table align="center" width="600" cellpadding="0" cellspacing="0" style="background:#fff;margin:40px auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
       <tr>
         <td style="background:#143F73;padding:28px 30px;text-align:center;border-bottom:4px solid #F08C1A;">
-          <h1 style="color:#fff;margin:0;font-size:26px;font-weight:800;letter-spacing:1px;">HAV<span style="color:#F08C1A;">A</span>R</h1>
+          <h1 style="color:#fff;margin:0;font-size:26px;font-weight:800;letter-spacing:1px;">Havar<span style="color:#F08C1A;">Tek</span></h1>
           <p style="color:#cbd5e1;margin:6px 0 0;font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;">Hava Aracı Hizmetleri · depremTek</p>
         </td>
       </tr>
@@ -42,7 +42,7 @@ export async function sendHavarApprovedEmail(
           <h2 style="font-size:20px;font-weight:700;margin:0 0 16px;text-align:center;color:#F08C1A;">✈️ Talebiniz Alındı</h2>
           <p style="font-size:15px;line-height:24px;color:#475569;margin:0 0 16px;">Sayın <strong>${greeting}</strong>,</p>
           <p style="font-size:15px;line-height:24px;color:#475569;margin:0 0 24px;">
-            HAVAR ${tip} talebiniz tarafımıza ulaşmış ve değerlendirilmiştir.
+            HavarTek ${tip} talebiniz tarafımıza ulaşmış ve değerlendirilmiştir.
             <strong>Sizinle en yakın zamanda iletişime geçilecektir.</strong>
             İlginiz için teşekkür ederiz.
           </p>
@@ -53,7 +53,7 @@ export async function sendHavarApprovedEmail(
       </tr>
       <tr>
         <td style="background:#f8fafc;padding:22px 30px;border-top:1px solid #e2e8f0;text-align:center;font-size:12px;color:#94a3b8;line-height:18px;">
-          Bu e-posta HAVAR / depremTek tarafından otomatik gönderilmiştir.
+          Bu e-posta HavarTek / depremTek tarafından otomatik gönderilmiştir.
         </td>
       </tr>
     </table>

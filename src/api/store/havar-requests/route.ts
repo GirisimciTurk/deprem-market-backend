@@ -50,7 +50,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
   await notifyAdmins(req.scope, {
     type: "havar_request",
-    title: d.type === "rental" ? "Yeni HAVAR ön kiralama talebi" : "Yeni HAVAR ön alım talebi",
+    title: d.type === "rental" ? "Yeni HavarTek ön kiralama talebi" : "Yeni HavarTek ön alım talebi",
     body: `${d.full_name}${d.city ? ` — ${d.city}` : ""}${d.want_door_mechanism ? " · kapı mekanizması" : ""}`,
     link: "/havar-requests",
   })

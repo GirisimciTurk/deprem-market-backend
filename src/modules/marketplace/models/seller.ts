@@ -32,6 +32,14 @@ const Seller = model.define("seller", {
   // Satıcının tercih ettiği varsayılan kargo firması (cargo.ts CarrierCode):
   // aras | yurtici | mng | ptt. Kargolarken ön-seçili gelir.
   default_carrier: model.text().nullable(),
+  // Satıcının MÜŞTERİYE yansıyan ücretsiz kargo kuralı (TRY major). Müşteri
+  // kargosu normalde desi-bazlı hesaplanır; bu alan onu sıfırlayabilir:
+  //   null  → ücretli (desi-bazlı müşteri kargosu alınır)
+  //   0     → her zaman ücretsiz
+  //   > 0   → bu satıcının sepetteki ara toplamı bu tutara ≥ ise ücretsiz
+  // Not: yalnız MÜŞTERİ kargosunu etkiler; satıcı payout'undan düşülen gerçek
+  // desi maliyeti (split-order cargo_fee) bundan bağımsızdır.
+  free_shipping_threshold: model.number().nullable(),
   // Onaylı müşteri değerlendirmelerinin puan TOPLAMI ve sayısı (ikisi de tam
   // sayı; ortalama = rating_sum / rating_count, ondalık olarak okunurken
   // hesaplanır — model.number() integer olduğu için avg'i burada tutamayız).

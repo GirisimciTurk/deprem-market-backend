@@ -2,7 +2,7 @@ import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
 import { MARKETPLACE_MODULE } from "../modules/marketplace"
 import MarketplaceModuleService from "../modules/marketplace/service"
 import { notifySeller } from "./notify"
-import { readCargoTariff, computeDesi, computeCargoFee } from "./cargo-fee"
+import { readCargoTariff, computeCargoFee, unitDesi } from "./cargo-fee"
 
 /**
  * Bir müşteri siparişini satıcı bazında alt-siparişlere (seller_order) böler ve
@@ -50,12 +50,18 @@ export async function splitOrder(container: any, orderId: string): Promise<numbe
     string,
     { sellerId: string; isHouse: boolean; sellerRate: number; categoryIds: string[] }
   >()
-  // Ürün → birim ağırlık (gram); kargo desi'si için.
-  const productWeight = new Map<string, number>()
+  // Ürün → ağırlık (gram) + boyut (cm); kargo desi'si için (hacimsel desi).
+  const productDims = new Map<
+    string,
+    { grams: number; lengthCm: number; widthCm: number; heightCm: number }
+  >()
   if (productIds.length > 0) {
     const { data: products } = await query.graph({
       entity: "product",
-      fields: ["id", "weight", "seller.id", "seller.commission_rate", "seller.is_house", "categories.id"],
+      fields: [
+        "id", "weight", "length", "width", "height",
+        "seller.id", "seller.commission_rate", "seller.is_house", "categories.id",
+      ],
       filters: { id: productIds },
     })
     for (const p of products as any[]) {
@@ -67,7 +73,12 @@ export async function splitOrder(container: any, orderId: string): Promise<numbe
           categoryIds: (p.categories || []).map((c: any) => c.id),
         })
       }
-      productWeight.set(p.id, Number(p.weight ?? 0))
+      productDims.set(p.id, {
+        grams: Number(p.weight ?? 0),
+        lengthCm: Number(p.length ?? 0),
+        widthCm: Number(p.width ?? 0),
+        heightCm: Number(p.height ?? 0),
+      })
     }
   }
 
@@ -105,12 +116,14 @@ export async function splitOrder(container: any, orderId: string): Promise<numbe
 
   const currency = order.currency_code || "try"
   const sellerOrders = [...groups.entries()].map(([sellerId, g]) => {
-    // Bu satıcıya düşen toplam ağırlık → desi → kargo ücreti (kuruş).
-    const totalGrams = g.items.reduce(
-      (s, { it }) => s + num(productWeight.get(it.product_id) ?? 0) * num(it.quantity),
-      0
-    )
-    const cargo_fee = computeCargoFee(cargoTariff, computeDesi(totalGrams))
+    // Bu satıcıya düşen toplam desi → kargo ücreti (kuruş). Her kalem için birim
+    // desi = max(hacimsel desi [en×boy×yük/3000], ağırlık [kg]); adetle çarpılıp
+    // toplanır. Boyut girilmemiş ürünlerde otomatik ağırlığa düşer.
+    const totalDesi = g.items.reduce((s, { it }) => {
+      const d = productDims.get(it.product_id)
+      return s + unitDesi(d ?? {}) * num(it.quantity)
+    }, 0)
+    const cargo_fee = computeCargoFee(cargoTariff, totalDesi)
     const snapshot = g.items.map(({ it, rate }) => {
       const line_total = num(it.unit_price) * num(it.quantity)
       return {

@@ -1,6 +1,5 @@
 import {
   AbstractFulfillmentProviderService,
-  MedusaError,
 } from "@medusajs/framework/utils"
 import {
   CalculatedShippingOptionPrice,
@@ -13,6 +12,13 @@ import {
   Logger,
 } from "@medusajs/framework/types"
 import { YurticiKargoClient } from "./client"
+import { DEFAULT_CARGO_TARIFF } from "../../../../lib/cargo-fee"
+import {
+  computeCartCargo,
+  CargoItem,
+  LINE_SHIP_META_KEY,
+  LineShipMeta,
+} from "../../../../lib/cart-cargo"
 
 type InjectedDependencies = {
   logger: Logger
@@ -82,20 +88,49 @@ class YurticiKargoFulfillmentProviderService extends AbstractFulfillmentProvider
     return true
   }
 
-  // Şimdilik sabit (flat) fiyat kullanıyoruz — hesaplanan fiyat desteklenmiyor.
+  // Desi-bazlı MÜŞTERİ kargosu: fiyat sepete göre hesaplanır (calculated).
   async canCalculate(): Promise<boolean> {
-    return false
+    return true
   }
 
+  /**
+   * Desi-bazlı müşteri kargo ücreti. context = { ...cart, from_location }; izole
+   * modül olduğumuz için query/marketplace YOK — satıcı bilgisini kalemlerin
+   * `metadata.dt_ship`'inden okuruz (cart-stamp-seller subscriber damgalar).
+   * Boyutlar context'ten gelir (items.variant/product). Tarife DEFAULT'tur
+   * (admin özelleştirmesi ana container'daki /store/shipping-quote tahmininde
+   * yansır; checkout charge'ı için DEFAULT yeterli — fark yoksa aynıdır).
+   */
   async calculatePrice(
     _optionData: CalculateShippingOptionPriceDTO["optionData"],
     _data: CalculateShippingOptionPriceDTO["data"],
-    _context: CalculateShippingOptionPriceDTO["context"]
+    context: CalculateShippingOptionPriceDTO["context"]
   ): Promise<CalculatedShippingOptionPrice> {
-    throw new MedusaError(
-      MedusaError.Types.NOT_ALLOWED,
-      "Yurtiçi Kargo şu an sabit fiyat (flat) kullanıyor; hesaplanan fiyat desteklenmiyor."
-    )
+    const items: any[] = (context as any)?.items ?? []
+    const cargoItems: CargoItem[] = items.map((it) => {
+      const meta = (it?.metadata?.[LINE_SHIP_META_KEY] ?? {}) as Partial<LineShipMeta>
+      const variant = it?.variant ?? {}
+      const product = it?.product ?? variant?.product ?? {}
+      const grams = Number(variant.weight ?? product.weight ?? 0) || 0
+      const qty = Math.max(1, Number(it?.quantity) || 1)
+      const unit = Number(it?.unit_price ?? it?.raw_unit_price?.value ?? 0) || 0
+      return {
+        seller_id: meta.s ?? null,
+        free_shipping_threshold: meta.f ?? null,
+        grams,
+        lengthCm: Number(variant.length ?? 0) || 0,
+        widthCm: Number(variant.width ?? 0) || 0,
+        heightCm: Number(variant.height ?? 0) || 0,
+        quantity: qty,
+        line_subtotal: unit * qty,
+      }
+    })
+
+    const { total } = computeCartCargo(cargoItems, DEFAULT_CARGO_TARIFF)
+    return {
+      calculated_amount: total,
+      is_calculated_price_tax_inclusive: false,
+    }
   }
 
   async createFulfillment(

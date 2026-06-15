@@ -39,6 +39,35 @@ export function computeDesi(totalGrams: number): number {
   return Math.max(1, Math.ceil(kg))
 }
 
+/** Hacimsel desi: (en × boy × yükseklik cm) / 3000. Boyut eksikse 0. */
+export function volumetricDesi(
+  lengthCm?: number | null,
+  widthCm?: number | null,
+  heightCm?: number | null
+): number {
+  const l = Number(lengthCm) || 0
+  const w = Number(widthCm) || 0
+  const h = Number(heightCm) || 0
+  if (l <= 0 || w <= 0 || h <= 0) return 0
+  return (l * w * h) / 3000
+}
+
+/**
+ * Bir ürünün BİRİM desi'si — kargo standardı: hacimsel desi ile fiili ağırlığın
+ * (kg) büyüğü. Boyut girilmemişse ağırlığa düşer. Toplamak için ceil edilmeden
+ * döner (toplam sonra computeCargoFee içinde yukarı yuvarlanır).
+ */
+export function unitDesi(opts: {
+  grams?: number | null
+  lengthCm?: number | null
+  widthCm?: number | null
+  heightCm?: number | null
+}): number {
+  const weightKg = (Number(opts.grams) || 0) / 1000
+  const vol = volumetricDesi(opts.lengthCm, opts.widthCm, opts.heightCm)
+  return Math.max(weightKg, vol)
+}
+
 /** Tarife + desi → kargo ücreti (kuruş). */
 export function computeCargoFee(tariff: CargoTariff, desi: number): number {
   const tiers = [...(tariff.tiers || [])].sort((a, b) => a.max_desi - b.max_desi)

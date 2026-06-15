@@ -20,9 +20,12 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   if (!parsed.success) return res.status(400).json({ message: "Geçersiz durum." })
 
   const reseller: ResellerModuleService = req.scope.resolve(RESELLER_MODULE)
+  // "rejected" yapıldığında zaman damgası vurulur → saatlik temizlik işi 24 saat
+  // sonra siler. Başka bir duruma alınırsa damga sıfırlanır (silme iptal).
   const application = await reseller.updateResellerApplications({
     id: req.params.id,
     status: parsed.data.status,
+    rejected_at: parsed.data.status === "rejected" ? new Date() : null,
   })
 
   // Sonuç maili (mail hatası admin akışını bozmasın).

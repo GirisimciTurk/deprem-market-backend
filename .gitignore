@@ -29,3 +29,6 @@ dist
 sent-emails
 # Yerel dev yükleme test artefaktları (webp-local provider)
 static/test-*.webp
+
+# Yerel dosya yüklemeleri (prod R2 kullanır)
+/static/

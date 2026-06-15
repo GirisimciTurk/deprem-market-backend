@@ -52,6 +52,9 @@ const updateSchema = z.object({
   tax_number: z.string().optional().nullable(),
   legal_name: z.string().optional().nullable(),
   default_carrier: z.enum(["yurtici", "mng", "ptt"]).optional().nullable(),
+  // Müşteriye yansıyan ücretsiz kargo kuralı (TRY major):
+  // null → ücretli (desi-bazlı), 0 → her zaman ücretsiz, > 0 → eşik üstü ücretsiz.
+  free_shipping_threshold: z.number().int().min(0).max(1000000).optional().nullable(),
 })
 
 /** POST /vendors/me — satıcı kendi mağaza ayarlarını günceller. */

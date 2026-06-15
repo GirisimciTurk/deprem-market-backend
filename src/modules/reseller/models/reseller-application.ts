@@ -15,6 +15,10 @@ const ResellerApplication = model.define("reseller_application", {
   tax_number: model.text().default(""),
   message: model.text().default(""),
   status: model.enum(["pending", "approved", "rejected", "suspended"]).default("pending").index(),
+  // Durum "rejected" yapıldığı an damgalanır; saatlik temizlik işi 24 saat
+  // sonra başvuruyu otomatik siler. Durum red dışına alınırsa null'lanır
+  // (silme zamanlayıcısı iptal). Bkz. src/jobs/purge-rejected-applications.ts
+  rejected_at: model.dateTime().nullable(),
 })
 
 export default ResellerApplication

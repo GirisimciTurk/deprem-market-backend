@@ -37,10 +37,6 @@ export async function runCargoSetup(container: any): Promise<{ created: string[]
   const link = container.resolve(ContainerRegistrationKeys.LINK)
   const query = container.resolve(ContainerRegistrationKeys.QUERY)
 
-  const freeShippingThreshold = process.env.FREE_SHIPPING_THRESHOLD_TRY
-    ? Number(process.env.FREE_SHIPPING_THRESHOLD_TRY)
-    : 1000
-
   logger.info("[setup-cargo] Yurtiçi Kargo altyapısı kuruluyor...")
 
   const { data: stockLocations } = await query.graph({
@@ -91,7 +87,7 @@ export async function runCargoSetup(container: any): Promise<{ created: string[]
 
   let { data: existingOptions } = await query.graph({
     entity: "shipping_option",
-    fields: ["id", "name", "provider_id"],
+    fields: ["id", "name", "provider_id", "price_type"],
   })
 
   // Eski "Aras Kargo - X" option'larını "Yurtiçi Kargo - X"e yeniden adlandır
@@ -128,27 +124,35 @@ export async function runCargoSetup(container: any): Promise<{ created: string[]
     }
   }
 
-  // Yalnız eski İngilizce starter + (yeniden kurulacak) Yurtiçi isimlerini temizlik
-  // adayı yap; Aras isimleri zaten yukarıda Yurtiçi'ye RENAME edildi (silinmez).
-  const removeNames = [...STARTER_OPTION_NAMES, ...CARGO_OPTION_NAMES]
-  const removeIds = existingOptions
-    .filter((o: any) => removeNames.includes(o.name) && !referencedOptionIds.has(o.id))
-    .map((o: any) => o.id)
+  // MÜŞTERİ kargosu artık DESİ-BAZLI (calculated): tek "Yurtiçi Kargo - Standart"
+  // calculated seçeneği sunulur; ücret sepete göre fulfillment provider'da hesaplanır
+  // (lib/cart-cargo + yurtici-kargo/service.calculatePrice). Ücretsiz kargo artık
+  // SATICI kararıdır (seller.free_shipping_threshold) ve hesabın içinde uygulanır;
+  // bu yüzden eski flat "Standart/Hızlı" ve global "Ücretsiz Kargo" KALDIRILIR.
+  // Idempotent: zaten calculated olan Standart korunur, yalnız eski flat'ler silinir.
+  const calcStandartExists = (existingOptions as any[]).some(
+    (o) => o.name === "Yurtiçi Kargo - Standart" && o.price_type === "calculated"
+  )
+
+  // Temizlik adayları: eski İngilizce starter + Hızlı + global Ücretsiz + FLAT Standart.
+  // (Calculated Standart asla silinmez; referans alınanlar da korunur.)
+  const removeNames = [...STARTER_OPTION_NAMES, "Yurtiçi Kargo - Hızlı", "Ücretsiz Kargo"]
+  const removeIds = (existingOptions as any[])
+    .filter((o) => !referencedOptionIds.has(o.id))
+    .filter(
+      (o) =>
+        removeNames.includes(o.name) ||
+        (o.name === "Yurtiçi Kargo - Standart" && o.price_type !== "calculated")
+    )
+    .map((o) => o.id)
   if (removeIds.length) {
     try {
       await deleteShippingOptionsWorkflow(container).run({ input: { ids: removeIds } })
-      logger.info(`[setup-cargo] ${removeIds.length} kullanılmayan kargo seçeneği silindi.`)
+      logger.info(`[setup-cargo] ${removeIds.length} eski/flat kargo seçeneği silindi.`)
     } catch (e: any) {
       logger.warn(`[setup-cargo] Seçenekler silinemedi (atlanıyor): ${e?.message}`)
     }
   }
-  const keptReferenced = existingOptions.filter(
-    (o: any) => removeNames.includes(o.name) && referencedOptionIds.has(o.id)
-  )
-
-  const existingNames = new Set<string>(
-    keptReferenced.filter((o: any) => CARGO_OPTION_NAMES.includes(o.name)).map((o: any) => o.name as string)
-  )
 
   const baseRules = [
     { attribute: "enabled_in_store", value: "true", operator: "eq" },
@@ -156,56 +160,33 @@ export async function runCargoSetup(container: any): Promise<{ created: string[]
   ]
   const optionsToCreate: any[] = []
 
-  if (!existingNames.has("Yurtiçi Kargo - Standart")) {
+  if (!calcStandartExists) {
     optionsToCreate.push({
       name: "Yurtiçi Kargo - Standart",
-      price_type: "flat",
+      price_type: "calculated",
       provider_id: CARGO_PROVIDER_ID,
       service_zone_id: turkeyZone.id,
       shipping_profile_id: shippingProfile.id,
-      type: { label: "Standart", description: "Yurtiçi Kargo ile 2-3 iş günü içinde teslimat.", code: "standard" },
-      prices: [{ currency_code: "try", amount: 50 * MINOR }],
+      type: {
+        label: "Standart",
+        description: "Yurtiçi Kargo ile 2-3 iş günü içinde teslimat. Ücret desiye göre hesaplanır.",
+        code: "standard",
+      },
+      // calculated → sabit fiyat yok; ücret provider.calculatePrice'tan gelir.
       rules: baseRules,
-    })
-  }
-  if (!existingNames.has("Yurtiçi Kargo - Hızlı")) {
-    optionsToCreate.push({
-      name: "Yurtiçi Kargo - Hızlı",
-      price_type: "flat",
-      provider_id: CARGO_PROVIDER_ID,
-      service_zone_id: turkeyZone.id,
-      shipping_profile_id: shippingProfile.id,
-      type: { label: "Hızlı", description: "Yurtiçi Kargo ile ertesi gün teslimat.", code: "express" },
-      prices: [{ currency_code: "try", amount: 100 * MINOR }],
-      rules: baseRules,
-    })
-  }
-  if (!existingNames.has("Ücretsiz Kargo")) {
-    optionsToCreate.push({
-      name: "Ücretsiz Kargo",
-      price_type: "flat",
-      provider_id: CARGO_PROVIDER_ID,
-      service_zone_id: turkeyZone.id,
-      shipping_profile_id: shippingProfile.id,
-      type: { label: "Ücretsiz", description: `${freeShippingThreshold}₺ ve üzeri siparişlerde ücretsiz Yurtiçi Kargo.`, code: "free" },
-      prices: [{ currency_code: "try", amount: 0 }],
-      rules: [
-        ...baseRules,
-        { attribute: "item_total", value: (freeShippingThreshold * MINOR).toFixed(2), operator: "gte" },
-      ],
     })
   }
 
   if (optionsToCreate.length) {
     await createShippingOptionsWorkflow(container).run({ input: optionsToCreate })
-    logger.info(`[setup-cargo] ${optionsToCreate.length} Yurtiçi kargo seçeneği oluşturuldu.`)
+    logger.info(`[setup-cargo] Desi-bazlı (calculated) Yurtiçi Kargo seçeneği oluşturuldu.`)
   } else {
-    logger.info("[setup-cargo] Tüm Yurtiçi kargo seçenekleri zaten mevcut (atlanıyor).")
+    logger.info("[setup-cargo] Desi-bazlı Yurtiçi Kargo seçeneği zaten mevcut (atlanıyor).")
   }
 
-  logger.info(`[setup-cargo] Tamamlandı. Ücretsiz kargo eşiği: ${freeShippingThreshold}₺.`)
+  logger.info("[setup-cargo] Tamamlandı. Müşteri kargosu desi-bazlı; ücretsiz kargo satıcı kararı.")
   return {
     created: optionsToCreate.map((o) => o.name),
-    kept: keptReferenced.map((o: any) => o.name),
+    kept: [],
   }
 }
