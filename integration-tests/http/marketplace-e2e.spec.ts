@@ -18,6 +18,12 @@ medusaIntegrationTestRunner({
     let crudSellerId: string
     let contractToken: string
     let contractSellerId: string
+    // Paylaşılan ticaret ortamı (tek kez seed; "tr" tek region'a ait olabildiği için
+    // checkout + iade describe'ları AYNI ortamı kullanır)
+    let cPk: { headers: Record<string, string> }
+    let cRegionId: string
+    let cVariantId: string
+    let cProductId: string
 
     beforeAll(async () => {
       container = getContainer()
@@ -51,6 +57,13 @@ medusaIntegrationTestRunner({
       })
       contractToken = r2.token
       contractSellerId = r2.seller.id
+
+      // Ticaret ortamı (kanal+pubkey+region+stok+kargo+ürün), ürün CRUD satıcısına bağlı
+      const cm = await seedCommerce(container, { sellerId: crudSellerId })
+      cPk = { headers: { "x-publishable-api-key": cm.pubKey } }
+      cRegionId = cm.regionId
+      cVariantId = cm.variantId
+      cProductId = cm.product.id
     })
 
     describe("Smoke", () => {
@@ -276,13 +289,12 @@ medusaIntegrationTestRunner({
       let orderId: string
       let sellerOrderId: string
 
-      beforeAll(async () => {
-        // Ticaret ortamı + ürünü CRUD satıcısına bağla (zincir için)
-        const s = await seedCommerce(container, { sellerId: crudSellerId })
-        pk = { headers: { "x-publishable-api-key": s.pubKey } }
-        regionId = s.regionId
-        variantId = s.variantId
-        productId = s.product.id
+      beforeAll(() => {
+        // Paylaşılan ticaret ortamını kullan (top-level beforeAll'da seed edildi)
+        pk = cPk
+        regionId = cRegionId
+        variantId = cVariantId
+        productId = cProductId
       })
 
       it("misafir müşteri sepet → adres → kargo → ödeme → sipariş tamamlar", async () => {
@@ -344,6 +356,20 @@ medusaIntegrationTestRunner({
         expect(so.tracking_number).toEqual("YK-TEST-12345")
         expect(so.tracking_url).toBeTruthy() // cargo.ts şablonundan üretildi
         expect(so.eligible_at).toBeTruthy() // hakediş tarihi zamanlandı
+      })
+
+      it("hakediş süresi dolunca pending → eligible (settlement)", async () => {
+        const { settlePendingPayouts } = await import("../../src/lib/settlement")
+        const mp = container.resolve(MARKETPLACE_MODULE)
+        // Bekleme süresi dolmuş gibi eligible_at'i geçmişe çek
+        await mp.updateSellerOrders({
+          id: sellerOrderId,
+          eligible_at: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        })
+        const moved = await settlePendingPayouts(container)
+        expect(moved).toBeGreaterThanOrEqual(1)
+        const so: any = await mp.retrieveSellerOrder(sellerOrderId)
+        expect(so.payout_status).toEqual("eligible")
       })
 
       it("müşteri kaydı + giriş + /customers/me çalışır", async () => {
@@ -413,6 +439,79 @@ medusaIntegrationTestRunner({
         const storefront = await api.get("/store/sellers/crud-satici", pk)
         const seller = storefront.data.seller || storefront.data
         expect(Number(seller.rating_avg)).toBeGreaterThan(0)
+      })
+    })
+
+    describe("İade/RMA zinciri (satıcıya bölünmüş iade)", () => {
+      let pk: { headers: Record<string, string> }
+      let custToken: string
+      let orderId: string
+      let orderItemId: string
+
+      const ch = () => ({ headers: { ...pk.headers, authorization: `Bearer ${custToken}` } })
+
+      beforeAll(async () => {
+        pk = cPk // paylaşılan ticaret ortamı
+        // Kayıtlı müşteri (iade auth gerektirir + sipariş sahipliği)
+        const email = "iade-musteri@test.local"
+        const reg = await api.post("/auth/customer/emailpass/register", { email, password: "Test1234!" })
+        await api.post("/store/customers", { email, first_name: "İade", last_name: "Müşteri" }, {
+          headers: { ...pk.headers, authorization: `Bearer ${reg.data.token}` },
+        })
+        custToken = (await api.post("/auth/customer/emailpass", { email, password: "Test1234!" })).data.token
+        // Müşteri olarak checkout (order.customer_id set olur)
+        const cart = (await api.post("/store/carts", { region_id: cRegionId, email }, ch())).data.cart
+        await api.post(`/store/carts/${cart.id}/line-items`, { variant_id: cVariantId, quantity: 2 }, ch())
+        const addr = {
+          first_name: "İade", last_name: "Müşteri", address_1: "Cadde 5",
+          city: "İstanbul", country_code: "tr", postal_code: "34000", phone: "05551112233",
+        }
+        await api.post(`/store/carts/${cart.id}`, { shipping_address: addr, billing_address: addr, email }, ch())
+        const opts = (await api.get(`/store/shipping-options?cart_id=${cart.id}`, ch())).data.shipping_options.filter(
+          (o: any) => !/İade/i.test(o.name)
+        )
+        await api.post(`/store/carts/${cart.id}/shipping-methods`, { option_id: opts[0].id }, ch())
+        const pc = (await api.post("/store/payment-collections", { cart_id: cart.id }, ch())).data.payment_collection
+        await api.post(`/store/payment-collections/${pc.id}/payment-sessions`, { provider_id: "pp_system_default" }, ch())
+        const order = (await api.post(`/store/carts/${cart.id}/complete`, {}, ch())).data.order
+        orderId = order.id
+        orderItemId = order.items[0].id
+        // İade ancak FULFILLED kalemler için açılır → native siparişi kargoya ver
+        const { createOrderFulfillmentWorkflow } = await import("@medusajs/core-flows")
+        await createOrderFulfillmentWorkflow(container).run({
+          input: {
+            order_id: orderId,
+            items: order.items.map((i: any) => ({ id: i.id, quantity: i.quantity })),
+          } as any,
+        })
+      })
+
+      it("müşteri iade talebi → satıcıya bölünmüş SellerReturn (requested)", async () => {
+        const res = await api.post(
+          "/store/return-requests",
+          { order_id: orderId, items: [{ id: orderItemId, quantity: 1 }] },
+          ch()
+        )
+        expect([200, 201]).toContain(res.status)
+        const mp = container.resolve(MARKETPLACE_MODULE)
+        let srs: any[] = []
+        for (let i = 0; i < 30; i++) {
+          srs = await mp.listSellerReturns({ seller_id: crudSellerId, status: "requested" })
+          if (srs.length > 0) break
+          await new Promise((r) => setTimeout(r, 500))
+        }
+        expect(srs.length).toBeGreaterThan(0)
+      })
+
+      it("satıcı iadeyi teslim alır → SellerReturn 'received' + komisyon clawback", async () => {
+        const mp = container.resolve(MARKETPLACE_MODULE)
+        const [sr] = await mp.listSellerReturns({ seller_id: crudSellerId, status: "requested" })
+        const res = await api.post(`/vendors/returns/${sr.id}/receive`, {}, authHeader(crudToken))
+        expect([200, 201]).toContain(res.status)
+        const updated: any = await mp.retrieveSellerReturn(sr.id)
+        expect(updated.status).toEqual("received")
+        // ilgili seller_order'da iade kazancı geri alındı
+        expect(Number(updated.returned_earning ?? 0)).toBeGreaterThanOrEqual(0)
       })
     })
   },

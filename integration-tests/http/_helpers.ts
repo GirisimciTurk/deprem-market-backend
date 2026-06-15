@@ -175,6 +175,23 @@ export async function seedCommerce(container: any, opts: { sellerId?: string } =
           { attribute: "is_return", value: "false", operator: "eq" },
         ],
       },
+      {
+        // İade kargo option'ı (return-requests bunu arar; yoksa iade 500 verir)
+        name: "İade Kargo",
+        service_zone_id: fset.service_zones[0].id,
+        shipping_profile_id: profile.id,
+        provider_id: "manual_manual",
+        price_type: "flat",
+        type: { label: "İade", description: "İade kargosu", code: "return" },
+        prices: [
+          { currency_code: "try", amount: 0 },
+          { region_id: region.id, amount: 0 },
+        ],
+        rules: [
+          { attribute: "is_return", value: "true", operator: "eq" },
+          { attribute: "enabled_in_store", value: "true", operator: "eq" },
+        ],
+      },
     ],
   })
 
