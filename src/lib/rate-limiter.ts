@@ -119,16 +119,12 @@ export class RateLimiter {
 export const InMemoryRateLimiter = RateLimiter
 
 // --- Limiter örnekleri (3. arg = Redis anahtar öneki) ---------------------
-// Installments: dakikada 15
-export const installmentsLimiter = new RateLimiter(15, 60000, "installments")
-// Paynkolay Callback: dakikada 20
+// PayTR Callback (sunucu-sunucu bildirim): dakikada 20
 export const callbackLimiter = new RateLimiter(20, 60000, "callback")
 // Order tracking: dakikada 10 (sıralı sipariş no + tahmini email enumerasyonuna karşı)
 export const orderTrackingLimiter = new RateLimiter(10, 60000, "order-tracking")
-// Paynkolay hash imzalama: dakikada 30
+// PayTR iframe token imzalama: dakikada 30
 export const hashLimiter = new RateLimiter(30, 60000, "hash")
-// Paynkolay kayıtlı kart listele/sil: dakikada 20
-export const cardsLimiter = new RateLimiter(20, 60000, "cards")
 // Yorum gönderimi: dakikada 5 (spam yorumlara karşı)
 export const reviewLimiter = new RateLimiter(5, 60000, "review")
 // Bayilik başvurusu: saatte 3 (spam başvurulara karşı)

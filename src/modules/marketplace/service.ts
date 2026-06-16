@@ -12,9 +12,12 @@ import NotificationItem from "./models/notification-item"
 import Conversation, { ConversationMessage } from "./models/conversation"
 import SellerCampaign from "./models/seller-campaign"
 import CargoTariff from "./models/cargo-tariff"
+import CategoryAttribute from "./models/category-attribute"
+import Brand from "./models/brand"
 
 // Otomatik CRUD: createSellers/... + SellerOrders/SellerReturns/CommissionRules/SellerReviews
-// /SellerContracts/SellerContractAcceptances/ProductQuestions/NotificationItems...
+// /SellerContracts/SellerContractAcceptances/ProductQuestions/NotificationItems
+// /CategoryAttributes/Brands...
 class MarketplaceModuleService extends MedusaService({
   Seller,
   SellerAdmin,
@@ -30,6 +33,8 @@ class MarketplaceModuleService extends MedusaService({
   ConversationMessage,
   SellerCampaign,
   CargoTariff,
+  CategoryAttribute,
+  Brand,
 }) {
   /**
    * Bir satıcının ortalama puanını (rating_avg) ve onaylı değerlendirme sayısını

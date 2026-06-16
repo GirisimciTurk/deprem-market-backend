@@ -4,6 +4,7 @@ import {
   createInventoryLevelsWorkflow,
 } from "@medusajs/medusa/core-flows"
 import { MARKETPLACE_MODULE } from "../../../modules/marketplace"
+import { buildAttributeSpecs } from "../../../lib/category-attributes"
 
 function slugify(input: string): string {
   const map: Record<string, string> = { ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u" }
@@ -45,6 +46,14 @@ export type VendorProductInput = {
   tags?: string[] | null
   /** Detaylı anlatım blokları (foto + yazı). Ürün sayfasında sırayla render edilir. */
   content_blocks?: { image?: string | null; text: string }[] | null
+  // --- Marka (onaylı Brand listesinden) ---
+  /** Seçilen markanın id'si. metadata.brand_id'ye yazılır; subtitle marka adını taşır. */
+  brand_id?: string | null
+  // --- Kategori bazlı dinamik özellikler ({ key: value }) → metadata.attributes ---
+  attributes?: Record<string, unknown> | null
+  // --- KDV oranı (%) ve kargoya veriliş (termin) süresi (gün) ---
+  vat_rate?: number | null
+  delivery_days?: number | null
   // --- Kargo / boyut (kg & cm; desi storefront/kargo için) ---
   weight?: number | null
   length?: number | null
@@ -158,6 +167,32 @@ export async function createVendorProduct(
     .map((b) => ({ image: (b.image || "").trim() || null, text: (b.text || "").trim() }))
     .filter((b) => b.text || b.image)
   if (blocks.length > 0) metadata.content_blocks = blocks
+
+  // Marka kimliği (subtitle marka ADInı taşır; metadata.brand_id eşleştirme için).
+  if (input.brand_id) metadata.brand_id = input.brand_id
+  // Kategori bazlı dinamik özellikler — boş/null değerleri ele, kalanı sakla.
+  if (input.attributes && typeof input.attributes === "object") {
+    const cleaned: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(input.attributes)) {
+      if (v == null) continue
+      if (typeof v === "string" && v.trim() === "") continue
+      if (Array.isArray(v) && v.length === 0) continue
+      cleaned[k] = v
+    }
+    if (Object.keys(cleaned).length > 0) {
+      metadata.attributes = cleaned
+      // Gösterim snapshot'ı (etiketli) — storefront doğrudan render eder.
+      const specs = await buildAttributeSpecs(scope, categoryIds[0], cleaned)
+      if (specs.length > 0) metadata.specs = specs
+    }
+  }
+  // KDV oranı (%) ve kargoya veriliş (termin) süresi (gün).
+  if (input.vat_rate != null && !Number.isNaN(Number(input.vat_rate))) {
+    metadata.vat_rate = Number(input.vat_rate)
+  }
+  if (input.delivery_days != null && !Number.isNaN(Number(input.delivery_days))) {
+    metadata.delivery_days = Math.max(0, Math.floor(Number(input.delivery_days)))
+  }
 
   const { result } = await createProductsWorkflow(scope).run({
     input: {

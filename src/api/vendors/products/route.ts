@@ -118,6 +118,11 @@ const createSchema = z
     stock: z.number().int().min(0).optional(),
     // "draft" = taslak (onaya gitmez), "proposed" = onaya gönder (varsayılan).
     status: z.enum(["draft", "proposed"]).optional(),
+    // Marka (onaylı Brand id'si), kategori bazlı dinamik özellikler, KDV oranı, termin (gün).
+    brand_id: z.string().optional().nullable(),
+    attributes: z.record(z.string(), z.any()).optional().nullable(),
+    vat_rate: z.number().min(0).max(100).optional().nullable(),
+    delivery_days: z.coerce.number().int().min(0).max(60).optional().nullable(),
     // Çok-varyant modu: ikisi de verilirse matris ürünü oluşturulur.
     options: z.array(z.object({ title: z.string().min(1), values: z.array(z.string().min(1)).min(1) })).optional(),
     variants: z.array(variantSchema).optional(),

@@ -91,6 +91,8 @@ const ADMIN_ONLY_MATCHERS = [
   "/admin/marketplace-setup",
   "/admin/settle-payouts",
   "/admin/commission-rules*",
+  "/admin/category-attributes*",
+  "/admin/brands*",
   "/admin/invoices*",
   "/admin/storefront-settings*",
   "/admin/order-refunds*",

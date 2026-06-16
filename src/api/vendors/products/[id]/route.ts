@@ -8,6 +8,7 @@ import {
 import { z } from "zod"
 import { resolveSeller } from "../../_lib/resolve-seller"
 import { MARKETPLACE_MODULE } from "../../../../modules/marketplace"
+import { buildAttributeSpecs } from "../../../../lib/category-attributes"
 
 /** Ürünün bu satıcıya ait olup olmadığını doğrular. */
 async function ownsProduct(req: MedusaRequest, productId: string, sellerId: string) {
@@ -19,6 +20,7 @@ async function ownsProduct(req: MedusaRequest, productId: string, sellerId: stri
       "status",
       "metadata",
       "seller.id",
+      "categories.id",
       "variants.id",
       "variants.inventory_items.inventory_item_id",
     ],
@@ -88,6 +90,11 @@ const updateSchema = z.object({
     .array(z.object({ image: z.string().url().optional().nullable(), text: z.string().max(1200) }))
     .max(12)
     .optional(),
+  // Marka / kategori özellikleri / KDV / termin → metadata'ya merge edilir.
+  brand_id: z.string().optional().nullable(),
+  attributes: z.record(z.string(), z.any()).optional().nullable(),
+  vat_rate: z.number().min(0).max(100).optional().nullable(),
+  delivery_days: z.coerce.number().int().min(0).max(60).optional().nullable(),
   price: z.number().positive().optional(),
   // İndirimsiz / liste fiyatı → metadata.compare_at_price (boş/0 ⇒ kaldırılır).
   original_price: z.number().nonnegative().optional().nullable(),
@@ -172,6 +179,42 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       .filter((b) => b.text || b.image)
     if (blocks.length > 0) metadata.content_blocks = blocks
     else delete metadata.content_blocks
+    metaChanged = true
+  }
+  if (data.brand_id !== undefined) {
+    if (data.brand_id) metadata.brand_id = data.brand_id
+    else delete metadata.brand_id
+    metaChanged = true
+  }
+  if (data.attributes !== undefined) {
+    const cleaned: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(data.attributes ?? {})) {
+      if (v == null) continue
+      if (typeof v === "string" && v.trim() === "") continue
+      if (Array.isArray(v) && v.length === 0) continue
+      cleaned[k] = v
+    }
+    if (Object.keys(cleaned).length > 0) {
+      metadata.attributes = cleaned
+      // Etiketli gösterim snapshot'ını yeniden üret (etkin kategori: yeni veya mevcut).
+      const effectiveCat = data.category_ids?.[0] ?? (product as any).categories?.[0]?.id
+      const specs = await buildAttributeSpecs(req.scope, effectiveCat, cleaned)
+      if (specs.length > 0) metadata.specs = specs
+      else delete metadata.specs
+    } else {
+      delete metadata.attributes
+      delete metadata.specs
+    }
+    metaChanged = true
+  }
+  if (data.vat_rate !== undefined) {
+    if (data.vat_rate != null) metadata.vat_rate = data.vat_rate
+    else delete metadata.vat_rate
+    metaChanged = true
+  }
+  if (data.delivery_days !== undefined) {
+    if (data.delivery_days != null) metadata.delivery_days = data.delivery_days
+    else delete metadata.delivery_days
     metaChanged = true
   }
   if (metaChanged) update.metadata = metadata

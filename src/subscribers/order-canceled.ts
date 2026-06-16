@@ -9,7 +9,7 @@ import { MARKETPLACE_MODULE } from "../modules/marketplace"
  * (varsa iade tutarıyla).
  *
  * PARA İADESİ: Medusa'nın native cancel-order akışı capture'lanmış ödemeleri ZATEN
- * otomatik iade eder (refundCapturedPaymentsWorkflow — Paynkolay dahil provider'ın
+ * otomatik iade eder (refundCapturedPaymentsWorkflow — ödeme sağlayıcısının
  * refundPayment'ını çağırır) ve yetkilendirilmiş ama tahsil edilmemiş ödemeleri iptal/void
  * eder. Bu yüzden burada AYRICA iade YAPMAYIZ; yalnız toplam iade tutarını okuyup e-postada
  * bildiririz.

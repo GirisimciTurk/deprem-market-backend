@@ -126,11 +126,6 @@ module.exports = defineConfig({
             options: {},
           },
           {
-            resolve: "./src/modules/payment/providers/paynkolay",
-            id: "paynkolay",
-            options: {},
-          },
-          {
             // PayTR Pazaryeri (sub-merchant + escrow). Kimlik bilgileri .env'de
             // (PAYTR_MERCHANT_ID/KEY/SALT); yoksa provider yüklenir ama çağrılar
             // fail-closed (lib/paytr-config) döner.

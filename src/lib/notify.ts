@@ -26,6 +26,7 @@ export type NotifyType =
   | "havar_request" // yeni HAVAR ön alım/kiralama talebi (admin)
   | "product_approval" // yayın bekleyen ürün (admin)
   | "seller_signup" // yeni satıcı kaydı / onay bekliyor (admin)
+  | "brand_request" // onay bekleyen marka talebi (admin)
   | "general"
 
 type NotifyInput = {
