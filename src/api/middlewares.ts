@@ -198,6 +198,21 @@ export default defineMiddlewares({
     { matcher: "/vendors", middlewares: [vendorCors] },
     { matcher: "/vendors/*", middlewares: [vendorCors] },
     {
+      // Görsel yükleme: base64 gövde büyük olabilir → body limiti yükseltilir
+      // (varsayılan 100KB yetmez; tek-ürün ve toplu yükleme görselleri buradan geçer).
+      method: ["POST"],
+      matcher: "/vendors/uploads",
+      bodyParser: { sizeLimit: "75mb" },
+      middlewares: [],
+    },
+    {
+      // Toplu ürün yükleme: 500 satıra kadar JSON gövde → body limiti yükseltilir.
+      method: ["POST"],
+      matcher: "/vendors/products/bulk",
+      bodyParser: { sizeLimit: "5mb" },
+      middlewares: [],
+    },
+    {
       // Satıcı (bayi) self-service kaydı: /auth/seller/emailpass/register'dan
       // gelen kayıt token'ını kabul eder (henüz actor yok) → satıcı oluşturulur.
       method: ["POST"],
