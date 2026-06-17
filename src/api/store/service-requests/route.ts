@@ -5,6 +5,7 @@ import {
 import { z } from "zod"
 import { SERVICE_REQUEST_MODULE } from "../../../modules/service_request"
 import type ServiceRequestModuleService from "../../../modules/service_request/service"
+import { autoAssignSeller } from "../../_lib/service-assign"
 
 /**
  * POST /store/service-requests
@@ -48,7 +49,17 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
     payment_status: "none",
   } as any)
 
-  return res.status(201).json({ service_request: created })
+  // Otomatik bayi ata (best-effort; uygun bayi yoksa atanmamış kalır → admin elle atar).
+  try {
+    await autoAssignSeller(req.scope, (created as any).id)
+  } catch {
+    /* atama hatası talep oluşturmayı bozmasın */
+  }
+  const final = await svc
+    .retrieveServiceRequest((created as any).id)
+    .catch(() => created)
+
+  return res.status(201).json({ service_request: final })
 }
 
 /**

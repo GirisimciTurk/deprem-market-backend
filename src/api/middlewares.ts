@@ -194,6 +194,11 @@ export default defineMiddlewares({
       ],
     },
     {
+      // Talep detayı + teklif kararı (kabul/red): yalnız giriş yapmış sahibi.
+      matcher: "/store/service-requests/*",
+      middlewares: [authenticate("customer", ["session", "bearer"])],
+    },
+    {
       // Müşteri↔satıcı mesajlaşma: tüm uçlar giriş yapmış müşteri gerektirir
       // (her uçta ayrıca konuşma sahipliği doğrulanır).
       matcher: "/store/conversations",
