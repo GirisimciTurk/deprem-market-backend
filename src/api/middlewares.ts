@@ -184,6 +184,16 @@ export default defineMiddlewares({
       ],
     },
     {
+      // Özel hizmet talepleri: giriş yapmışsa müşteri id'si bağlanır (takip için),
+      // misafir de keşif talebi açabilir.
+      matcher: "/store/service-requests",
+      middlewares: [
+        authenticate("customer", ["session", "bearer"], {
+          allowUnauthenticated: true,
+        }),
+      ],
+    },
+    {
       // Müşteri↔satıcı mesajlaşma: tüm uçlar giriş yapmış müşteri gerektirir
       // (her uçta ayrıca konuşma sahipliği doğrulanır).
       matcher: "/store/conversations",

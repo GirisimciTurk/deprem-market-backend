@@ -172,6 +172,11 @@ module.exports = defineConfig({
     havar: {
       resolve: "./src/modules/havar",
     },
+    service_request: {
+      // Özel hizmet (keşif→teklif→onay→tedarik→montaj→kabul) talep/proje modülü.
+      // havar (drone) modülünden ayrı; fiziki kurulum hizmetleri için.
+      resolve: "./src/modules/service_request",
+    },
     stock_movement: {
       resolve: "./src/modules/stock_movement",
     },
