@@ -66,6 +66,13 @@ module.exports = defineConfig({
       cookieSecret: requiredSecret("COOKIE_SECRET", process.env.COOKIE_SECRET),
     }
   },
+  // Medusa'nın yerleşik admin paneli (/app) KULLANILMIYOR — özel admin paneli
+  // (admin.depremtek.market) var. Yalnız yerleşik UI'ı kapatır; `/admin/*` API'leri
+  // (özel panel, auth, hizmet/payout route'ları) ÇALIŞMAYA DEVAM EDER. Bonus: backend
+  // build'i admin UI'ını derlemediği için hızlanır.
+  admin: {
+    disable: true,
+  },
   modules: {
     // Üretim/ölçek altyapısı: in-memory yerine Redis. REDIS_URL zaten bağlı.
     //  - EVENT_BUS: event'ler kalıcı/yeniden-denenebilir olur (süreç çökse de mail/sipariş
