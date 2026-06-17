@@ -3,6 +3,7 @@ import { z } from "zod"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { resolveSeller } from "../../_lib/resolve-seller"
 import { createVendorProduct } from "../../_lib/create-vendor-product"
+import { updateVendorProduct } from "../../_lib/update-vendor-product"
 import { getPendingRequiredContracts } from "../../../../lib/seller-contracts"
 import { notifyAdmins } from "../../../../lib/notify"
 import { vendorBulkLimiter, enforceRateLimit } from "../../../../lib/rate-limiter"
@@ -116,8 +117,56 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     /* kategori okunamazsa eşleştirme atlanır */
   }
 
-  const created: { index: number; id: string; title: string; warning?: string }[] = []
+  // Satıcının mevcut ürünleri: variant SKU → {ürün, varyant, envanter, metadata}.
+  // "SKU varsa güncelle, yoksa ekle" için döngü ÖNCESİ tek seferde yüklenir.
+  const skuMap = new Map<
+    string,
+    { productId: string; variantId?: string | null; invItemId?: string | null; metadata?: Record<string, unknown> | null }
+  >()
+  try {
+    const { data: sellerRows } = await query.graph({
+      entity: "seller",
+      fields: ["products.id"],
+      filters: { id: resolved.seller.id },
+    })
+    const productIds = ((sellerRows[0] as any)?.products ?? [])
+      .filter(Boolean)
+      .map((p: any) => p.id)
+    if (productIds.length > 0) {
+      const { data: prods } = await query.graph({
+        entity: "product",
+        fields: [
+          "id",
+          "metadata",
+          "variants.id",
+          "variants.sku",
+          "variants.inventory_items.inventory_item_id",
+        ],
+        filters: { id: productIds },
+      })
+      for (const p of prods ?? []) {
+        for (const v of (p as any).variants ?? []) {
+          if (v?.sku) {
+            skuMap.set(String(v.sku).trim().toLowerCase(), {
+              productId: (p as any).id,
+              variantId: v.id,
+              invItemId: v.inventory_items?.[0]?.inventory_item_id ?? null,
+              metadata: (p as any).metadata ?? {},
+            })
+          }
+        }
+      }
+    }
+  } catch {
+    /* mevcut ürünler okunamazsa upsert devre dışı kalır; her satır yeni eklenir */
+  }
+
+  type ResultItem = { index: number; id: string; title: string; warning?: string }
+  const created: ResultItem[] = []
+  const updated: ResultItem[] = []
   const errors: { index: number; title: string; message: string }[] = []
+  // Aynı dosyada tekrarlanan SKU'yu engellemek için bu çalıştırmada işlenenler.
+  const processedSkus = new Set<string>()
 
   // Satırları sırayla işle — Medusa workflow'larının paralel koşması ve handle
   // çakışmaları riskli; ölçek 500 satırla sınırlı, sıralı işlem yeterli.
@@ -158,18 +207,27 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     }
 
     const images = splitList(r.images)
+    const skuKey = r.sku ? String(r.sku).trim().toLowerCase() : ""
+
+    // Aynı dosyada SKU tekrarı → kopya/çakışma olmasın diye atla.
+    if (skuKey && processedSkus.has(skuKey)) {
+      errors.push({
+        index: i,
+        title: rowTitle,
+        message: `SKU '${r.sku}' bu dosyada tekrarlanıyor (atlandı).`,
+      })
+      continue
+    }
+    const existing = skuKey ? skuMap.get(skuKey) : undefined
 
     try {
-      const product = await createVendorProduct(
-        req.scope,
-        resolved.seller.id,
-        resolved.seller.handle,
-        {
+      if (existing) {
+        // SKU mevcut → kopya OLUŞTURMA, mevcut ürünü güncelle (fiyat/stok/alanlar).
+        await updateVendorProduct(req.scope, existing, {
           title: r.title,
           description: r.description ?? undefined,
           price: r.price,
           original_price: r.original_price ?? undefined,
-          sku: r.sku ?? undefined,
           barcode: r.barcode ?? undefined,
           thumbnail: r.thumbnail ?? undefined,
           images: images.length > 0 ? images : undefined,
@@ -185,17 +243,56 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
           subtitle,
           brand_id,
           category_ids,
-        },
-        String(i + 1)
-      )
-      created.push({
-        index: i,
-        id: product.id,
-        title: product.title,
-        ...(warns.length ? { warning: warns.join("; ") } : {}),
-      })
+        })
+        updated.push({
+          index: i,
+          id: existing.productId,
+          title: r.title,
+          ...(warns.length ? { warning: warns.join("; ") } : {}),
+        })
+      } else {
+        const product = await createVendorProduct(
+          req.scope,
+          resolved.seller.id,
+          resolved.seller.handle,
+          {
+            title: r.title,
+            description: r.description ?? undefined,
+            price: r.price,
+            original_price: r.original_price ?? undefined,
+            sku: r.sku ?? undefined,
+            barcode: r.barcode ?? undefined,
+            thumbnail: r.thumbnail ?? undefined,
+            images: images.length > 0 ? images : undefined,
+            weight: r.weight ?? undefined,
+            length: r.length ?? undefined,
+            width: r.width ?? undefined,
+            height: r.height ?? undefined,
+            stock: r.stock ?? undefined,
+            vat_rate: r.vat_rate ?? undefined,
+            delivery_days: r.delivery_days ?? undefined,
+            material: r.material ?? undefined,
+            tags: splitList(r.tags),
+            subtitle,
+            brand_id,
+            category_ids,
+          },
+          String(i + 1)
+        )
+        created.push({
+          index: i,
+          id: product.id,
+          title: product.title,
+          ...(warns.length ? { warning: warns.join("; ") } : {}),
+        })
+      }
+      if (skuKey) processedSkus.add(skuKey)
     } catch (e: any) {
-      errors.push({ index: i, title: rowTitle, message: e?.message || "Ürün oluşturulamadı." })
+      errors.push({
+        index: i,
+        title: rowTitle,
+        message: e?.message || (existing ? "Ürün güncellenemedi." : "Ürün oluşturulamadı."),
+      })
     }
   }
 
@@ -209,11 +306,13 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     })
   }
 
-  return res.status(created.length ? 201 : 400).json({
+  return res.status(created.length || updated.length ? 201 : 400).json({
     created,
+    updated,
     errors,
     total: parsed.data.rows.length,
     created_count: created.length,
+    updated_count: updated.length,
     error_count: errors.length,
   })
 }
