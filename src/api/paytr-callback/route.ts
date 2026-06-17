@@ -8,6 +8,15 @@ import { completeCartWorkflow } from "@medusajs/medusa/core-flows"
 import { getPayTRConfig } from "../../lib/paytr-config"
 import { buildCallbackHash } from "../../lib/paytr-hash"
 import { callbackLimiter } from "../../lib/rate-limiter"
+import { SERVICE_REQUEST_MODULE } from "../../modules/service_request"
+import type ServiceRequestModuleService from "../../modules/service_request/service"
+import {
+  applyServicePayment,
+  decodeServiceOid,
+  isServiceOid,
+  phaseAmount,
+} from "../_lib/service-payment"
+import { sendServicePaymentEmail } from "../../lib/service-mail"
 
 /**
  * POST /paytr-callback  (PayTR sunucu-sunucu bildirimi, x-www-form-urlencoded)
@@ -64,6 +73,47 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   if (status !== "success") {
     logger.info(`PayTR Callback: ödeme başarısız (oid: ${merchantOid}, sebep: ${body.failed_reason_msg || "-"})`)
     return res.status(200).send("OK")
+  }
+
+  // ── Hizmet talebi (keşifli kurulum) ESCROW ödemesi: sepet akışından ayrı. ──
+  // merchant_oid "srq" ile başlar → ortada sepet/sipariş yok; ödeme doğrudan
+  // service_request'e (faz bazlı) işlenir.
+  if (isServiceOid(merchantOid)) {
+    try {
+      const decoded = decodeServiceOid(merchantOid)
+      if (!decoded) {
+        logger.warn(`PayTR Callback: hizmet oid çözülemedi (${merchantOid})`)
+        return res.status(200).send("OK")
+      }
+      const svc = req.scope.resolve<ServiceRequestModuleService>(SERVICE_REQUEST_MODULE)
+      const r = await svc.retrieveServiceRequest(decoded.id).catch(() => null)
+      if (!r) {
+        logger.warn(`PayTR Callback: hizmet talebi yok (${decoded.id})`)
+        return res.status(200).send("OK")
+      }
+      // Tutar: token anında yazılan pending kalemden (TL major); yoksa faz tutarı.
+      const payments: any[] = Array.isArray((r as any).payments) ? (r as any).payments : []
+      const pending = payments.find((p) => p?.merchant_oid === merchantOid)
+      const amount = pending ? Number(pending.amount) : phaseAmount(r as any, decoded.phase)
+
+      const { changed } = await applyServicePayment(svc, r, {
+        phase: decoded.phase,
+        amount,
+        merchant_oid: merchantOid,
+        method: "paytr",
+      })
+      if (changed) {
+        logger.info(
+          `PayTR Callback: hizmet ödemesi işlendi (talep ${decoded.id}, faz ${decoded.phase}, ${amount} TL)`
+        )
+        const after = await svc.retrieveServiceRequest(decoded.id).catch(() => null)
+        sendServicePaymentEmail(req.scope, after ?? r, decoded.phase, amount).catch(() => {})
+      }
+      return res.status(200).send("OK")
+    } catch (e: any) {
+      logger.error(`PayTR Callback: hizmet ödemesi işlenemedi (${merchantOid}): ${e?.message}`)
+      return res.status(200).send("OK")
+    }
   }
 
   // 2. merchant_oid'den ödeme oturumu id'sini geri çöz: 'payses' + ulid → 'payses_' + ulid.

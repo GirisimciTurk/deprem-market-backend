@@ -67,6 +67,43 @@ export const authHeader = (token: string) => ({
 })
 
 /**
+ * Test ortamında bir admin (user) + giriş kimliği oluşturur ve /admin/* uçlarını
+ * çağırmak için geçerli bir "user" bearer token üretir. requireAdminRole middleware'i
+ * rolü user.metadata'dan okur; metadata yoksa admin sayılır → bu kullanıcı geçer.
+ */
+export async function createAdminWithToken(
+  container: any,
+  email = "admin-e2e@test.local"
+) {
+  const auth: any = container.resolve(Modules.AUTH)
+  const userSvc: any = container.resolve(Modules.USER)
+  const config: any = container.resolve(ContainerRegistrationKeys.CONFIG_MODULE)
+
+  const user = await userSvc.createUsers({ email, first_name: "E2E", last_name: "Admin" })
+  const reg = await auth.register("emailpass", {
+    body: { email, password: "Test1234!" },
+  })
+  const authIdentityId = reg?.authIdentity?.id
+  if (!authIdentityId) {
+    throw new Error("admin auth.register başarısız: " + JSON.stringify(reg).slice(0, 200))
+  }
+  await auth.updateAuthIdentities({
+    id: authIdentityId,
+    app_metadata: { user_id: user.id },
+  })
+  const token = generateJwtToken(
+    {
+      actor_id: user.id,
+      actor_type: "user",
+      auth_identity_id: authIdentityId,
+      app_metadata: { user_id: user.id },
+    },
+    { secret: config.projectConfig.http.jwtSecret, expiresIn: "1h" }
+  )
+  return { user, token }
+}
+
+/**
  * Boş test DB'sinde checkout için gereken ticaret ortamını kurar:
  * satış kanalı + yayınlanabilir anahtar + Türkiye region (try) + stok lokasyonu +
  * kargo (fulfillment set/service zone/shipping option) + fiyatlı/stoklu yayında ürün.

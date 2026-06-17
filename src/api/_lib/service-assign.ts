@@ -25,11 +25,12 @@ export async function autoAssignSeller(
     ? (reqRow as any).rejected_seller_ids
     : []
 
-  // Aktif satıcılar.
+  // Aktif satıcılar (komisyon oranı atama anında snapshot'lanır).
   const { data: sellers } = await query.graph({
     entity: "seller",
-    fields: ["id", "status"],
+    fields: ["id", "status", "commission_rate", "is_house"],
   })
+  const sellerMap = new Map<string, any>((sellers ?? []).map((s: any) => [s.id, s]))
   const candidates = (sellers ?? [])
     .filter((s: any) => s.status === "active" && !rejected.includes(s.id))
     .map((s: any) => s.id)
@@ -56,6 +57,35 @@ export async function autoAssignSeller(
     }
   }
 
-  await svc.updateServiceRequests({ id: requestId, assigned_seller_id: best } as any)
+  const bestSeller = sellerMap.get(best)
+  await svc.updateServiceRequests({
+    id: requestId,
+    assigned_seller_id: best,
+    // is_house bayi komisyonsuz; aksi halde bayinin güncel oranı snapshot'lanır.
+    commission_rate: bestSeller?.is_house ? 0 : Number(bestSeller?.commission_rate ?? 10),
+  } as any)
   return { assigned: true, sellerId: best }
+}
+
+/**
+ * Bir bayiye komisyon oranını (atama anı snapshot'ı) yazar. Manuel atamada
+ * (admin seller_id verince) kullanılır; is_house bayi komisyonsuzdur.
+ */
+export async function snapshotCommissionRate(
+  scope: any,
+  requestId: string,
+  sellerId: string
+): Promise<void> {
+  const query = scope.resolve(ContainerRegistrationKeys.QUERY)
+  const svc = scope.resolve(SERVICE_REQUEST_MODULE) as ServiceRequestModuleService
+  const { data: sellers } = await query.graph({
+    entity: "seller",
+    fields: ["id", "commission_rate", "is_house"],
+    filters: { id: sellerId },
+  })
+  const s = sellers?.[0]
+  await svc.updateServiceRequests({
+    id: requestId,
+    commission_rate: s?.is_house ? 0 : Number(s?.commission_rate ?? 10),
+  } as any)
 }

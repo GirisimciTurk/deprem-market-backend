@@ -90,6 +90,8 @@ const ADMIN_ONLY_MATCHERS = [
   "/admin/conversations*",
   "/admin/marketplace-setup",
   "/admin/settle-payouts",
+  // Özel hizmet talepleri (atama + ödeme/komisyon/payout) — para-etkili, yalnız admin.
+  "/admin/service-requests*",
   "/admin/commission-rules*",
   "/admin/category-attributes*",
   "/admin/brands*",

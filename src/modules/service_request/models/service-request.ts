@@ -75,6 +75,20 @@ const ServiceRequest = model.define("service_request", {
     .default("none")
     .index(),
 
+  // ───── Tahsilat / escrow / payout (D fazı) ─────
+  // Tutarlar TAM LİRA (major). Tahsilat PayTR koruma hesabında (escrow) bekler;
+  // iş tamamlanıp tam ödeme alınınca payout_status="eligible" olur ve admin bayiye
+  // (komisyon düşülerek) platform-transfer ile aktarır.
+  paid_total: model.number().nullable(), // toplam tahsil edilen (TL)
+  // Her tahsilat kalemi: { phase: "survey"|"deposit"|"balance", amount, merchant_oid, paid_at }
+  payments: model.json().nullable(),
+  commission_rate: model.number().nullable(), // komisyon % (atama anındaki bayi oranı)
+  commission_amount: model.number().nullable(), // platform komisyonu (TL)
+  payout_amount: model.number().nullable(), // bayiye ödenecek net (TL)
+  payout_status: model.enum(["pending", "eligible", "paid"]).default("pending").index(),
+  payout_trans_id: model.text().nullable(), // PayTR transfer referansı
+  paid_at: model.dateTime().nullable(), // payout tamamlanma anı
+
   // ───── Montaj ─────
   install_scheduled_at: model.dateTime().nullable(),
   install_done_at: model.dateTime().nullable(),

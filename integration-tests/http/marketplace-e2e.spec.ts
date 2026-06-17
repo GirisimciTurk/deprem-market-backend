@@ -1,9 +1,12 @@
 import { medusaIntegrationTestRunner } from "@medusajs/test-utils"
-import { createSellerWithToken, authHeader, seedCommerce } from "./_helpers"
+import { createSellerWithToken, authHeader, seedCommerce, createAdminWithToken } from "./_helpers"
 import { runContractSetup } from "../../src/lib/contract-setup"
 import { MARKETPLACE_MODULE } from "../../src/modules/marketplace"
 import { HAVAR_MODULE } from "../../src/modules/havar"
+import { SERVICE_REQUEST_MODULE } from "../../src/modules/service_request"
 import { settlePendingPayouts } from "../../src/lib/settlement"
+import { encodeServiceOid } from "../../src/api/_lib/service-payment"
+import { buildCallbackHash } from "../../src/lib/paytr-hash"
 
 jest.setTimeout(300_000)
 
@@ -560,6 +563,396 @@ medusaIntegrationTestRunner({
           .post("/store/havar-requests", { type: "invalid", full_name: "X", email: "x@test.local" }, pk())
           .catch((e: any) => e.response)
         expect(res.status).toEqual(400)
+      })
+    })
+
+    // ───────── Hizmet talebi ödeme/escrow/payout (D fazı) ─────────
+    describe("Hizmet talebi ödeme/escrow/payout (D fazı)", () => {
+      let adminToken: string
+      let custToken: string
+      let custPk: { headers: Record<string, string> }
+      let reqId: string
+
+      beforeAll(async () => {
+        adminToken = (await createAdminWithToken(container)).token
+        // Hizmet talebini SAHİBİ olan müşteri açsın (pay ucu sahiplik ister).
+        const email = "hizmet-musteri@test.local"
+        await api.post("/auth/customer/emailpass/register", { email, password: "Test1234!" })
+        await api.post(
+          "/store/customers",
+          { email, first_name: "Hizmet", last_name: "Müşteri" },
+          { headers: { ...cPk.headers, authorization: `Bearer ${(await api.post("/auth/customer/emailpass", { email, password: "Test1234!" })).data.token}` } }
+        )
+        const login = await api.post("/auth/customer/emailpass", { email, password: "Test1234!" })
+        custPk = { headers: { ...cPk.headers, authorization: `Bearer ${login.data.token}` } }
+      })
+
+      it("müşteri keşif talebi açar → otomatik bayi atanır + komisyon snapshot'lanır", async () => {
+        const res = await api.post(
+          "/store/service-requests",
+          {
+            service_kind: "carbon_fiber",
+            service_title: "Karbon Fiber Güçlendirme",
+            full_name: "Hizmet Müşteri",
+            email: "hizmet-musteri@test.local",
+            phone: "05551234567",
+            city: "İstanbul",
+            district: "Kadıköy",
+            address: "Test Mah. 1. Sk. No:5",
+          },
+          custPk
+        )
+        expect([200, 201]).toContain(res.status)
+        const sr = res.data.service_request
+        reqId = sr.id
+        expect(sr.status).toEqual("talep")
+        // Aktif bayi(ler) var → otomatik atanmalı + komisyon oranı snapshot (10).
+        expect(sr.assigned_seller_id).toBeTruthy()
+        expect(sr.commission_rate).toEqual(10)
+      })
+
+      it("admin tutarları + komisyonu belirler (HTTP)", async () => {
+        const res = await api.post(
+          `/admin/service-requests/${reqId}`,
+          { survey_fee: 500, deposit_amount: 2000, balance_amount: 3000, commission_rate: 10 },
+          authHeader(adminToken)
+        )
+        expect(res.status).toEqual(200)
+        const sr = res.data.service_request
+        expect(sr.deposit_amount).toEqual(2000)
+        expect(sr.balance_amount).toEqual(3000)
+      })
+
+      it("ödeme kapısı: kapora teklif onayından ÖNCE reddedilir (400)", async () => {
+        const res = await api
+          .post(`/store/service-requests/${reqId}/pay`, { phase: "deposit" }, custPk)
+          .catch((e: any) => e.response)
+        expect(res.status).toEqual(400)
+        expect(String(res.data?.error || "")).toMatch(/onayla/i)
+      })
+
+      it("ödeme kapısı: PayTR yapılandırılmamışsa keşif ödemesi 503 döner (rota+sahiplik+kapı geçer)", async () => {
+        const res = await api
+          .post(`/store/service-requests/${reqId}/pay`, { phase: "survey" }, custPk)
+          .catch((e: any) => e.response)
+        expect(res.status).toEqual(503)
+        expect(String(res.data?.error || "")).toMatch(/yapılandırılmamış/i)
+      })
+
+      it("admin manuel tahsilat: keşif + kapora → payment_status ilerler", async () => {
+        // Önce teklif onaylanmış say (durum override).
+        await api.post(`/admin/service-requests/${reqId}`, { status: "onaylandi" }, authHeader(adminToken))
+        const s1 = await api.post(
+          `/admin/service-requests/${reqId}`,
+          { action: "record_payment", phase: "survey" },
+          authHeader(adminToken)
+        )
+        expect(s1.data.service_request.payment_status).toEqual("survey_paid")
+        const s2 = await api.post(
+          `/admin/service-requests/${reqId}`,
+          { action: "record_payment", phase: "deposit" },
+          authHeader(adminToken)
+        )
+        expect(s2.data.service_request.payment_status).toEqual("deposit_paid")
+        expect(s2.data.service_request.paid_total).toEqual(2500)
+      })
+
+      it("bakiye ödenmeden iş teslim olsa bile payout eligible OLMAZ", async () => {
+        const res = await api.post(
+          `/admin/service-requests/${reqId}`,
+          { status: "montaj_yapildi" },
+          authHeader(adminToken)
+        )
+        expect(res.data.service_request.payout_status).toEqual("pending")
+      })
+
+      it("bakiye tahsil edilince tam ödeme + iş teslim → payout eligible + komisyon/net hesaplanır", async () => {
+        const res = await api.post(
+          `/admin/service-requests/${reqId}`,
+          { action: "record_payment", phase: "balance" },
+          authHeader(adminToken)
+        )
+        const sr = res.data.service_request
+        expect(sr.payment_status).toEqual("paid")
+        expect(sr.paid_total).toEqual(5500)
+        expect(sr.payout_status).toEqual("eligible")
+        expect(sr.commission_amount).toEqual(550) // %10
+        expect(sr.payout_amount).toEqual(4950)
+      })
+
+      it("payout (manuel mod — PayTR yok): escrow paid işaretlenir", async () => {
+        const res = await api.post(
+          `/admin/service-requests/${reqId}/payout`,
+          {},
+          authHeader(adminToken)
+        )
+        expect(res.status).toEqual(200)
+        expect(res.data.mode).toEqual("manual")
+        expect(res.data.service_request.payout_status).toEqual("paid")
+        expect(res.data.service_request.paid_at).toBeTruthy()
+      })
+
+      it("zaten ödenmiş payout tekrar denenince 400", async () => {
+        const res = await api
+          .post(`/admin/service-requests/${reqId}/payout`, {}, authHeader(adminToken))
+          .catch((e: any) => e.response)
+        expect(res.status).toEqual(400)
+      })
+
+      it("RBAC: admin hizmet ucu kimliksiz çağrıda 401", async () => {
+        const res = await api
+          .get(`/admin/service-requests/${reqId}`)
+          .catch((e: any) => e.response)
+        expect([401, 403]).toContain(res.status)
+      })
+    })
+
+    // ───────── Hizmet PayTR callback (srq dallanması) ─────────
+    describe("Hizmet PayTR callback (srq merchant_oid)", () => {
+      const REALM = {
+        PAYTR_MERCHANT_ID: "999999",
+        PAYTR_MERCHANT_KEY: "E2E_TEST_KEY",
+        PAYTR_MERCHANT_SALT: "E2E_TEST_SALT",
+      }
+      const saved: Record<string, string | undefined> = {}
+      let srvId: string
+
+      beforeAll(async () => {
+        // PayTR'ı geçici olarak "yapılandırılmış" yap (callback config kapısı geçsin).
+        // Callback hiçbir ağ çağrısı yapmaz (hash yerel doğrulanır) → güvenli.
+        for (const k of Object.keys(REALM)) {
+          saved[k] = process.env[k]
+          process.env[k] = (REALM as any)[k]
+        }
+        const svc: any = container.resolve(SERVICE_REQUEST_MODULE)
+        const created = await svc.createServiceRequests({
+          service_kind: "gas_cutoff",
+          service_title: "Gaz Kesici",
+          full_name: "Callback Test",
+          email: "callback@test.local",
+          status: "talep",
+          survey_fee: 750,
+          payment_status: "none",
+        })
+        srvId = created.id
+      })
+
+      afterAll(() => {
+        for (const k of Object.keys(REALM)) {
+          if (saved[k] === undefined) delete process.env[k]
+          else process.env[k] = saved[k]
+        }
+      })
+
+      it("geçerli imzalı başarı bildirimi keşif ödemesini işler (idempotent)", async () => {
+        const merchantOid = encodeServiceOid(srvId, "survey")
+        const totalAmount = "75000" // 750 TL × 100 (kuruş) — callback imzası için
+        const hash = buildCallbackHash({
+          merchantOid,
+          status: "success",
+          totalAmount,
+          merchantKey: REALM.PAYTR_MERCHANT_KEY,
+          merchantSalt: REALM.PAYTR_MERCHANT_SALT,
+        })
+        const body = { merchant_oid: merchantOid, status: "success", total_amount: totalAmount, hash }
+
+        const r1 = await api.post("/paytr-callback", body)
+        expect(r1.status).toEqual(200)
+        expect(r1.data).toEqual("OK")
+
+        const svc: any = container.resolve(SERVICE_REQUEST_MODULE)
+        const after: any = await svc.retrieveServiceRequest(srvId)
+        expect(after.payment_status).toEqual("survey_paid")
+        expect(after.paid_total).toEqual(750) // major (TL) olarak saklanır
+        expect((after.payments || []).some((p: any) => p.phase === "survey" && p.status === "paid")).toBe(true)
+
+        // Idempotluk: aynı bildirim tekrar gelince mükerrer tahsilat eklenmez.
+        const r2 = await api.post("/paytr-callback", body)
+        expect(r2.status).toEqual(200)
+        const after2: any = await svc.retrieveServiceRequest(srvId)
+        expect(after2.paid_total).toEqual(750)
+        expect((after2.payments || []).filter((p: any) => p.phase === "survey").length).toEqual(1)
+      })
+
+      it("geçersiz imza reddedilir (BAD_HASH), ödeme işlenmez", async () => {
+        const svc: any = container.resolve(SERVICE_REQUEST_MODULE)
+        const created = await svc.createServiceRequests({
+          service_kind: "other", full_name: "Bad Hash", email: "badhash@test.local",
+          status: "talep", survey_fee: 100, payment_status: "none",
+        })
+        const merchantOid = encodeServiceOid(created.id, "survey")
+        const res = await api
+          .post("/paytr-callback", { merchant_oid: merchantOid, status: "success", total_amount: "10000", hash: "GECERSIZ" })
+          .catch((e: any) => e.response)
+        expect(res.status).toEqual(400)
+        const after: any = await svc.retrieveServiceRequest(created.id)
+        expect(after.payment_status).toEqual("none")
+      })
+    })
+
+    // ───────── Hizmet talebi TAM YAŞAM DÖNGÜSÜ (müşteri↔bayi↔admin E2E) ─────────
+    // Tüm aktörlerin gerçek HTTP uçlarından geçen uçtan uca yolculuk:
+    // talep → keşif → teklif → onay → tedarik → montaj → ödeme → tamam → payout.
+    describe("Hizmet talebi tam yaşam döngüsü (E2E)", () => {
+      let adminToken: string
+      let custPk2: { headers: Record<string, string> }
+      let id: string
+
+      // Talebin durumunu müşterinin gözünden okur (kendi takip ekranı).
+      const custStatus = async () => {
+        const r = await api.get(`/store/service-requests/${id}`, custPk2)
+        return r.data.service_request.status as string
+      }
+
+      beforeAll(async () => {
+        adminToken = (await createAdminWithToken(container, "lifecycle-admin@test.local")).token
+        const email = "lifecycle-musteri@test.local"
+        await api.post("/auth/customer/emailpass/register", { email, password: "Test1234!" })
+        const login1 = await api.post("/auth/customer/emailpass", { email, password: "Test1234!" })
+        await api.post(
+          "/store/customers",
+          { email, first_name: "Döngü", last_name: "Müşteri" },
+          { headers: { ...cPk.headers, authorization: `Bearer ${login1.data.token}` } }
+        )
+        const login = await api.post("/auth/customer/emailpass", { email, password: "Test1234!" })
+        custPk2 = { headers: { ...cPk.headers, authorization: `Bearer ${login.data.token}` } }
+      })
+
+      it("1) müşteri keşif talebi açar (talep)", async () => {
+        const res = await api.post(
+          "/store/service-requests",
+          {
+            service_kind: "panic_room",
+            service_title: "Panik Odası Kurulumu",
+            full_name: "Döngü Müşteri",
+            email: "lifecycle-musteri@test.local",
+            phone: "05559998877",
+            city: "Ankara",
+            district: "Çankaya",
+            address: "Yaşam Cd. No:7",
+            details: { m2: 18, kat_sayisi: 1 },
+          },
+          custPk2
+        )
+        expect([200, 201]).toContain(res.status)
+        id = res.data.service_request.id
+        expect(res.data.service_request.status).toEqual("talep")
+      })
+
+      it("2) admin talebi bilinen bayiye atar (komisyon snapshot)", async () => {
+        const res = await api.post(
+          `/admin/service-requests/${id}`,
+          { action: "assign", seller_id: crudSellerId },
+          authHeader(adminToken)
+        )
+        expect(res.data.service_request.assigned_seller_id).toEqual(crudSellerId)
+        expect(res.data.service_request.commission_rate).toEqual(10)
+        // Bayi kendi listesinde görür.
+        const vlist = await api.get("/vendors/service-requests", authHeader(crudToken))
+        expect(vlist.data.service_requests.some((r: any) => r.id === id)).toBe(true)
+      })
+
+      it("3) bayi keşif randevusu verir → kesif_planlandi", async () => {
+        const res = await api.post(
+          `/vendors/service-requests/${id}`,
+          { action: "survey", survey_scheduled_at: "2026-07-01T10:00:00.000Z" },
+          authHeader(crudToken)
+        )
+        expect(res.data.service_request.status).toEqual("kesif_planlandi")
+        expect(await custStatus()).toEqual("kesif_planlandi")
+      })
+
+      it("4) bayi keşfi tamamlar → kesif_yapildi", async () => {
+        const res = await api.post(
+          `/vendors/service-requests/${id}`,
+          { action: "survey", survey_done: true, survey_report: "Kolon güçlendirme uygun." },
+          authHeader(crudToken)
+        )
+        expect(res.data.service_request.status).toEqual("kesif_yapildi")
+      })
+
+      it("5) bayi teklif gönderir → teklif_gonderildi", async () => {
+        const res = await api.post(
+          `/vendors/service-requests/${id}`,
+          {
+            action: "offer",
+            offer_items: [
+              { label: "Panik odası paneli", qty: 1, unit_price: 4000, total: 4000 },
+              { label: "Montaj işçiliği", qty: 1, unit_price: 1000, total: 1000 },
+            ],
+            offer_total: 5000,
+          },
+          authHeader(crudToken)
+        )
+        expect(res.data.service_request.status).toEqual("teklif_gonderildi")
+        expect(Number(res.data.service_request.offer_total)).toEqual(5000)
+      })
+
+      it("6) müşteri teklifi onaylar → onaylandi", async () => {
+        const res = await api.post(`/store/service-requests/${id}`, { decision: "accept" }, custPk2)
+        expect(res.data.service_request.status).toEqual("onaylandi")
+        expect(res.data.service_request.offer_decision).toEqual("accepted")
+      })
+
+      it("7) admin kapora/bakiye belirler + kapora tahsil edilir", async () => {
+        await api.post(
+          `/admin/service-requests/${id}`,
+          { deposit_amount: 2000, balance_amount: 3000, commission_rate: 10 },
+          authHeader(adminToken)
+        )
+        const res = await api.post(
+          `/admin/service-requests/${id}`,
+          { action: "record_payment", phase: "deposit" },
+          authHeader(adminToken)
+        )
+        expect(res.data.service_request.payment_status).toEqual("deposit_paid")
+      })
+
+      it("8) bayi tedarik → teslim → montaj randevusu → montaj yapıldı", async () => {
+        for (const status of ["tedarik", "teslim_edildi", "montaj_planlandi", "montaj_yapildi"]) {
+          const body: any = { action: "status", status }
+          if (status === "montaj_planlandi") body.install_scheduled_at = "2026-07-10T09:00:00.000Z"
+          const res = await api.post(`/vendors/service-requests/${id}`, body, authHeader(crudToken))
+          expect(res.data.service_request.status).toEqual(status)
+        }
+        // Bakiye henüz ödenmedi → payout eligible OLMAMALI.
+        const g = await api.get(`/admin/service-requests/${id}`, authHeader(adminToken))
+        expect(g.data.service_request.payout_status).toEqual("pending")
+      })
+
+      it("9) bakiye tahsil → tam ödeme + iş teslim → payout eligible", async () => {
+        const res = await api.post(
+          `/admin/service-requests/${id}`,
+          { action: "record_payment", phase: "balance" },
+          authHeader(adminToken)
+        )
+        const sr = res.data.service_request
+        expect(sr.payment_status).toEqual("paid")
+        expect(sr.paid_total).toEqual(5000)
+        expect(sr.payout_status).toEqual("eligible")
+        expect(sr.commission_amount).toEqual(500) // %10 × 5000
+        expect(sr.payout_amount).toEqual(4500)
+      })
+
+      it("10) bayi işi kapatır → tamamlandi (müşteri de görür)", async () => {
+        const res = await api.post(
+          `/vendors/service-requests/${id}`,
+          { action: "status", status: "tamamlandi" },
+          authHeader(crudToken)
+        )
+        expect(res.data.service_request.status).toEqual("tamamlandi")
+        expect(await custStatus()).toEqual("tamamlandi")
+      })
+
+      it("11) admin payout → bayiye aktarılır (manuel mod)", async () => {
+        const res = await api.post(`/admin/service-requests/${id}/payout`, {}, authHeader(adminToken))
+        expect(res.status).toEqual(200)
+        expect(res.data.service_request.payout_status).toEqual("paid")
+        // Bayi panelinde net hakediş görünür.
+        const vlist = await api.get("/vendors/service-requests?status=tamamlandi", authHeader(crudToken))
+        const mine = vlist.data.service_requests.find((r: any) => r.id === id)
+        expect(mine.payout_amount).toEqual(4500)
+        expect(mine.payout_status).toEqual("paid")
       })
     })
   },

@@ -4,6 +4,7 @@ import { resolveSeller } from "../../_lib/resolve-seller"
 import { SERVICE_REQUEST_MODULE } from "../../../../modules/service_request"
 import type ServiceRequestModuleService from "../../../../modules/service_request/service"
 import { autoAssignSeller } from "../../../_lib/service-assign"
+import { refreshServicePayout } from "../../../_lib/service-payment"
 
 /** Talebin bu bayiye atanmış olduğunu doğrular. */
 async function getOwned(req: MedusaRequest, sellerId: string) {
@@ -111,6 +112,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   }
 
   await svc.updateServiceRequests(update as any)
+  // İş montaj_yapildi/tamamlandi'ya geçtiyse ve tam ödeme alındıysa payout hakedişe yükselir.
+  if (update.status) await refreshServicePayout(svc, r.id)
   const after = await svc.retrieveServiceRequest(r.id)
   return res.json({ service_request: after })
 }
