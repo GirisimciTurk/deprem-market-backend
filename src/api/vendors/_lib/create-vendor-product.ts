@@ -23,6 +23,9 @@ export type VendorVariantInput = {
   title: string
   /** Fiyat TRY, major birim — kuruşa çevrilir. */
   price: number
+  /** İndirimsiz / liste fiyatı (TRY major). price'tan büyükse varyant
+   * metadata.compare_at_price'a yazılır (üstü çizili gösterim referansı). */
+  original_price?: number | null
   sku?: string | null
   barcode?: string | null
   stock?: number | null
@@ -113,11 +116,20 @@ export async function createVendorProduct(
   let variantsPayload: any[]
   // Varyant başlığı → açılış stoğu (create sonrası lokasyon seviyesi için).
   const stockByTitle: Record<string, number> = {}
+  // Çok-varyantta ilk geçerli İndirimsiz Fiyat → ürün seviyesi compare_at_price
+  // (satıcı düzenleme formunun geri-doldurması için; her varyant kendi değerini de taşır).
+  let multiCompareAtPrice: number | undefined
 
   if (multi) {
     optionsPayload = validOptions.map((o) => ({ title: o.title.trim(), values: o.values }))
     variantsPayload = (input.variants ?? []).map((v) => {
       if (v.stock != null) stockByTitle[v.title] = Math.max(0, Math.floor(Number(v.stock)))
+      // İndirimsiz fiyat satış fiyatından büyükse varyant metadata'sına yaz.
+      const variantMeta: Record<string, unknown> = {}
+      if (v.original_price != null && Number(v.original_price) > Number(v.price)) {
+        variantMeta.compare_at_price = Number(v.original_price)
+        if (multiCompareAtPrice == null) multiCompareAtPrice = Number(v.original_price)
+      }
       return {
         title: v.title,
         sku: v.sku ?? undefined,
@@ -125,6 +137,7 @@ export async function createVendorProduct(
         options: v.options,
         manage_inventory: true,
         prices: [{ amount: Math.round(v.price * 100), currency_code: "try" }],
+        ...(Object.keys(variantMeta).length > 0 ? { metadata: variantMeta } : {}),
       }
     })
   } else {
@@ -157,6 +170,10 @@ export async function createVendorProduct(
   const metadata: Record<string, unknown> = {}
   if (input.original_price != null && sellPrice != null && Number(input.original_price) > sellPrice) {
     metadata.compare_at_price = Number(input.original_price)
+  } else if (multi && multiCompareAtPrice != null) {
+    // Çok-varyant: tek-varyant price'ı yok; ilk varyantın İndirimsiz Fiyat'ını
+    // ürün seviyesinde referans olarak tut.
+    metadata.compare_at_price = multiCompareAtPrice
   }
   // Etiketler: Medusa native tag entity'si ayrı upsert gerektirir; veriyi
   // kaybetmemek için metadata.tags'e (string dizisi) yazıyoruz.

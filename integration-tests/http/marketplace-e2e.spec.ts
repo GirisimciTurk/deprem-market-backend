@@ -198,6 +198,109 @@ medusaIntegrationTestRunner({
         expect(res.data.created.length).toEqual(2)
         expect(res.data.errors.length).toEqual(1)
       })
+
+      it("beden/renk satırları aynı başlıkta tek ürüne gruplanır (varyantlı bulk)", async () => {
+        const res = await api.post(
+          "/vendors/products/bulk",
+          {
+            rows: [
+              // Aynı başlık + farklı beden → tek ürün, 3 varyant
+              { title: "Toplu Yelek", price: 200, stock: 5, sku: "YL-S", beden: "S" },
+              { title: "Toplu Yelek", price: 200, stock: 4, sku: "YL-M", beden: "M" },
+              { title: "Toplu Yelek", price: 210, stock: 3, sku: "YL-L", beden: "L" },
+              // Varyant bilgisi olmayan bağımsız satır → ayrı (tek-varyant) ürün
+              { title: "Toplu Tekil Ürün", price: 99, stock: 7, sku: "TEKIL-1" },
+            ],
+          },
+          authHeader(crudToken)
+        )
+        expect([200, 201]).toContain(res.status)
+        // 4 satır → 2 ürün (3 varyantlı grup + 1 bağımsız), hata yok
+        expect(res.data.created.length).toEqual(2)
+        expect(res.data.errors.length).toEqual(0)
+
+        const list = await api.get("/vendors/products?limit=100", authHeader(crudToken))
+        const grouped = list.data.products.find((x: any) => x.title === "Toplu Yelek")
+        expect(grouped).toBeTruthy()
+        expect(grouped.variants.length).toEqual(3) // S / M / L
+        const single = list.data.products.find((x: any) => x.title === "Toplu Tekil Ürün")
+        expect(single).toBeTruthy()
+        expect(single.variants.length).toEqual(1) // varyantsız → tek "Standart" varyant
+      })
+
+      it("varyant satırlarındaki İndirimsiz Fiyat ürün compare_at_price'a taşınır", async () => {
+        const res = await api.post(
+          "/vendors/products/bulk",
+          {
+            rows: [
+              { title: "İndirimli Yelek", price: 150, original_price: 200, stock: 5, sku: "IY-S", beden: "S" },
+              { title: "İndirimli Yelek", price: 150, original_price: 200, stock: 4, sku: "IY-M", beden: "M" },
+            ],
+          },
+          authHeader(crudToken)
+        )
+        expect([200, 201]).toContain(res.status)
+        expect(res.data.created.length).toEqual(1)
+        const pid = res.data.created[0].id
+        const detail = await api.get(`/vendors/products/${pid}`, authHeader(crudToken))
+        const product = detail.data.product ?? detail.data
+        // İndirimsiz Fiyat (200) > satış (150) → ürün seviyesi compare_at_price'a yazıldı
+        expect(Number(product.metadata?.compare_at_price)).toEqual(200)
+      })
+
+      it("asimetrik beden+renk kombinasyonlarına izin verir (kartezyen ZORLAMAZ)", async () => {
+        // Senaryo: L bedende 2 renk, S bedende 1 renk → 3 satır = 3 varyant.
+        // Tam kartezyen olsaydı 2 beden × 2 renk = 4 varyant olurdu; biz YALNIZ
+        // yazılan 3 kombinasyonu oluşturuyoruz.
+        const res = await api.post(
+          "/vendors/products/bulk",
+          {
+            rows: [
+              { title: "Toplu Mont", price: 300, stock: 5, sku: "MNT-L-K", beden: "L", renk: "Kırmızı" },
+              { title: "Toplu Mont", price: 300, stock: 4, sku: "MNT-L-M", beden: "L", renk: "Mavi" },
+              { title: "Toplu Mont", price: 320, stock: 3, sku: "MNT-S-K", beden: "S", renk: "Kırmızı" },
+            ],
+          },
+          authHeader(crudToken)
+        )
+        expect([200, 201]).toContain(res.status)
+        expect(res.data.created.length).toEqual(1)
+        expect(res.data.errors.length).toEqual(0)
+
+        const list = await api.get("/vendors/products?limit=100", authHeader(crudToken))
+        const p = list.data.products.find((x: any) => x.title === "Toplu Mont")
+        expect(p).toBeTruthy()
+        // 3 satır → 3 varyant (4 DEĞİL — kartezyen matris zorlanmadı)
+        expect(p.variants.length).toEqual(3)
+        // Her satırın kendi SKU'su ayrı varyant olarak oluştu
+        const skus = (p.variants ?? []).map((v: any) => v.sku).sort()
+        expect(skus).toEqual(["MNT-L-K", "MNT-L-M", "MNT-S-K"])
+      })
+
+      it("varyant grubu, daha önce kullanılmış SKU'yu içerirse atlanır (tekil yine oluşur)", async () => {
+        // Tekil satırlar gruplardan ÖNCE işlenir; "SH-S" tekil olarak işlenir, sonra
+        // aynı SKU'yu içeren varyant grubu çakışma nedeniyle atlanır ve raporlanır.
+        const res = await api.post(
+          "/vendors/products/bulk",
+          {
+            rows: [
+              { title: "Önce Tekil", price: 40, stock: 5, sku: "SH-S" },
+              { title: "Sonra Grup", price: 50, stock: 2, sku: "SH-S", beden: "S" },
+              { title: "Sonra Grup", price: 50, stock: 2, sku: "GRP-M", beden: "M" },
+            ],
+          },
+          authHeader(crudToken)
+        )
+        expect([200, 201]).toContain(res.status)
+        // Tekil oluştu (1), çakışan grup atlandı + raporlandı (1 hata)
+        expect(res.data.created.length).toEqual(1)
+        expect(res.data.errors.length).toEqual(1)
+        expect(res.data.created[0].title).toEqual("Önce Tekil")
+
+        const list = await api.get("/vendors/products?limit=100", authHeader(crudToken))
+        // Çakışan grup hiç oluşmadı
+        expect(list.data.products.find((x: any) => x.title === "Sonra Grup")).toBeFalsy()
+      })
     })
 
     describe("Satıcı çok-varyantlı ürün", () => {

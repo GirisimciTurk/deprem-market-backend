@@ -14,7 +14,10 @@ const MAX_ROWS = 500
  * Toplu satır şeması. Zorunlu: title + price. Diğer tüm alanlar opsiyonel.
  * Sayılar z.coerce ile string'ten de kabul edilir (Excel hücreleri metin gelebilir).
  * images/tags virgül/satır ile ayrılmış tek hücre; brand/category AD ile gelir
- * (sunucuda id'ye çevrilir). Varyant ve kategori-özelliği toplu yüklemede yok.
+ * (sunucuda id'ye çevrilir).
+ *
+ * Varyant desteği: beden ve/veya renk alanı doluysa, aynı başlığa sahip
+ * satırlar tek bir ürünün farklı varyantları olarak gruplanır.
  */
 const rowSchema = z.object({
   title: z.string().trim().min(1),
@@ -36,6 +39,8 @@ const rowSchema = z.object({
   tags: z.string().optional().nullable(), // "etiket1, etiket2"
   brand: z.string().optional().nullable(), // marka ADI → onaylı listede aranır
   category: z.string().optional().nullable(), // kategori ADI → eşleştirilir
+  beden: z.string().optional().nullable(), // varyant opsiyon: Beden (S, M, L...)
+  renk: z.string().optional().nullable(), // varyant opsiyon: Renk
 })
 
 const bulkSchema = z.object({
@@ -51,15 +56,49 @@ function splitList(value?: string | null): string[] {
     .filter(Boolean)
 }
 
+// İç tip: parse edilmiş tek satır + orijinal indeks.
+type ParsedRow = z.infer<typeof rowSchema> & { _index: number }
+
+/**
+ * Varyant bilgisi olan satırları (beden/renk) aynı başlığa göre gruplar.
+ * Döndürülen yapıda:
+ *   - singles: varyant bilgisi olmayan bağımsız satırlar
+ *   - groups: aynı başlığa sahip varyantlı satır grupları
+ */
+function groupVariantRows(rows: ParsedRow[]): {
+  singles: ParsedRow[]
+  groups: Map<string, ParsedRow[]>
+} {
+  const singles: ParsedRow[] = []
+  const grouped = new Map<string, ParsedRow[]>()
+
+  for (const row of rows) {
+    const hasBeden = !!(row.beden && row.beden.trim())
+    const hasRenk = !!(row.renk && row.renk.trim())
+    if (!hasBeden && !hasRenk) {
+      singles.push(row)
+    } else {
+      const key = row.title.trim().toLowerCase()
+      const existing = grouped.get(key) ?? []
+      existing.push(row)
+      grouped.set(key, existing)
+    }
+  }
+
+  return { singles, groups: grouped }
+}
+
 /**
  * POST /vendors/products/bulk  { rows: [...] }
  * Satıcının Excel/CSV'den parse edilmiş ürün satırlarını toplu yükler. Her satır
  * bağımsız doğrulanıp oluşturulur; bir satır hatalıysa diğerleri etkilenmez.
  *
- * Marka/kategori AD ile gelir; sunucuda (önceden tek seferde yüklenen) onaylı
- * marka ve kategori listesinden id'ye çevrilir. Bulunamazsa o alan atlanır ve
- * created satırına "warning" eklenir (ürün yine oluşturulur).
+ * Varyant desteği: Beden ve/veya Renk kolonu dolu satırlar, aynı başlığa göre
+ * gruplanarak tek bir ürünün farklı varyantları olarak oluşturulur. Her varyantın
+ * kendi fiyatı, stoğu, SKU'su ve barkodu olur. Açıklama, görsel, marka gibi genel
+ * alanlar grubun ilk satırından alınır.
  *
+ * Marka/kategori AD ile gelir; sunucuda onaylı listeden id'ye çevrilir.
  * Dosya parse (xlsx/csv) istemci (vendor paneli) tarafında yapılır; bu uç saf JSON
  * satır dizisi alır. Yalnız aktif satıcılar kullanabilir. En fazla 500 satır.
  */
@@ -168,8 +207,27 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   // Aynı dosyada tekrarlanan SKU'yu engellemek için bu çalıştırmada işlenenler.
   const processedSkus = new Set<string>()
 
-  // Satırları sırayla işle — Medusa workflow'larının paralel koşması ve handle
-  // çakışmaları riskli; ölçek 500 satırla sınırlı, sıralı işlem yeterli.
+  // Yardımcı: marka/kategori çözümleme
+  function resolveBrandCategory(r: ParsedRow) {
+    const warns: string[] = []
+    let brand_id: string | undefined
+    let subtitle: string | undefined
+    if (r.brand && r.brand.trim()) {
+      const id = brandByName.get(r.brand.trim().toLowerCase())
+      if (id) { brand_id = id; subtitle = r.brand.trim() }
+      else warns.push(`marka '${r.brand.trim()}' onaylı listede yok (markasız eklendi)`)
+    }
+    let category_ids: string[] | undefined
+    if (r.category && r.category.trim()) {
+      const id = categoryByName.get(r.category.trim().toLowerCase())
+      if (id) category_ids = [id]
+      else warns.push(`kategori '${r.category.trim()}' bulunamadı (kategorisiz eklendi)`)
+    }
+    return { brand_id, subtitle, category_ids, warns }
+  }
+
+  // ─── Satırları parse et ve varyant gruplarına ayır ───
+  const parsedRows: ParsedRow[] = []
   for (let i = 0; i < parsed.data.rows.length; i++) {
     const raw = parsed.data.rows[i] as any
     const rowTitle = (raw?.title ?? "").toString().trim() || `Satır ${i + 1}`
@@ -183,46 +241,25 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       })
       continue
     }
-    const r = rowParsed.data
-    const warns: string[] = []
+    parsedRows.push({ ...rowParsed.data, _index: i })
+  }
 
-    // Marka adı → id (onaylı liste). Bulunamazsa markasız ekle, uyar.
-    let brand_id: string | undefined
-    let subtitle: string | undefined
-    if (r.brand && r.brand.trim()) {
-      const id = brandByName.get(r.brand.trim().toLowerCase())
-      if (id) {
-        brand_id = id
-        subtitle = r.brand.trim()
-      } else {
-        warns.push(`marka '${r.brand.trim()}' onaylı listede yok (markasız eklendi)`)
-      }
-    }
-    // Kategori adı → id. Bulunamazsa kategorisiz ekle, uyar.
-    let category_ids: string[] | undefined
-    if (r.category && r.category.trim()) {
-      const id = categoryByName.get(r.category.trim().toLowerCase())
-      if (id) category_ids = [id]
-      else warns.push(`kategori '${r.category.trim()}' bulunamadı (kategorisiz eklendi)`)
-    }
+  const { singles, groups } = groupVariantRows(parsedRows)
 
+  // ─── 1) Tek-varyant (bağımsız) satırları işle (mevcut mantık) ───
+  for (const r of singles) {
+    const { brand_id, subtitle, category_ids, warns } = resolveBrandCategory(r)
     const images = splitList(r.images)
     const skuKey = r.sku ? String(r.sku).trim().toLowerCase() : ""
 
-    // Aynı dosyada SKU tekrarı → kopya/çakışma olmasın diye atla.
     if (skuKey && processedSkus.has(skuKey)) {
-      errors.push({
-        index: i,
-        title: rowTitle,
-        message: `SKU '${r.sku}' bu dosyada tekrarlanıyor (atlandı).`,
-      })
+      errors.push({ index: r._index, title: r.title, message: `SKU '${r.sku}' bu dosyada tekrarlanıyor (atlandı).` })
       continue
     }
     const existing = skuKey ? skuMap.get(skuKey) : undefined
 
     try {
       if (existing) {
-        // SKU mevcut → kopya OLUŞTURMA, mevcut ürünü güncelle (fiyat/stok/alanlar).
         await updateVendorProduct(req.scope, existing, {
           title: r.title,
           description: r.description ?? undefined,
@@ -245,7 +282,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
           category_ids,
         })
         updated.push({
-          index: i,
+          index: r._index,
           id: existing.productId,
           title: r.title,
           ...(warns.length ? { warning: warns.join("; ") } : {}),
@@ -277,10 +314,10 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
             brand_id,
             category_ids,
           },
-          String(i + 1)
+          String(r._index + 1)
         )
         created.push({
-          index: i,
+          index: r._index,
           id: product.id,
           title: product.title,
           ...(warns.length ? { warning: warns.join("; ") } : {}),
@@ -289,9 +326,121 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       if (skuKey) processedSkus.add(skuKey)
     } catch (e: any) {
       errors.push({
-        index: i,
-        title: rowTitle,
+        index: r._index,
+        title: r.title,
         message: e?.message || (existing ? "Ürün güncellenemedi." : "Ürün oluşturulamadı."),
+      })
+    }
+  }
+
+  // ─── 2) Varyantlı grupları işle ───
+  // Her grup = aynı başlık + beden/renk kombinasyonları → tek ürün, çoklu varyant.
+  for (const [, groupRows] of groups) {
+    const first = groupRows[0]
+    const groupIndices = groupRows.map((r) => r._index)
+    const { brand_id, subtitle, category_ids, warns } = resolveBrandCategory(first)
+
+    // Seçenek (option) türlerini belirle: Beden var mı? Renk var mı?
+    const hasBeden = groupRows.some((r) => r.beden && r.beden.trim())
+    const hasRenk = groupRows.some((r) => r.renk && r.renk.trim())
+
+    // Benzersiz değerleri topla (sıralı)
+    const bedenValues: string[] = []
+    const renkValues: string[] = []
+    for (const r of groupRows) {
+      if (r.beden && r.beden.trim() && !bedenValues.includes(r.beden.trim())) bedenValues.push(r.beden.trim())
+      if (r.renk && r.renk.trim() && !renkValues.includes(r.renk.trim())) renkValues.push(r.renk.trim())
+    }
+
+    const options: { title: string; values: string[] }[] = []
+    if (hasBeden) options.push({ title: "Beden", values: bedenValues })
+    if (hasRenk) options.push({ title: "Renk", values: renkValues })
+
+    // Her satır = bir varyant
+    const variants = groupRows.map((r) => {
+      const optionMap: Record<string, string> = {}
+      if (hasBeden) optionMap["Beden"] = (r.beden && r.beden.trim()) || bedenValues[0]
+      if (hasRenk) optionMap["Renk"] = (r.renk && r.renk.trim()) || renkValues[0]
+
+      // Varyant başlığı: "S / Kırmızı" veya sadece "M"
+      const label = Object.values(optionMap).join(" / ")
+
+      return {
+        title: label,
+        price: r.price,
+        original_price: r.original_price ?? undefined, // İndirimsiz Fiyat (varyant bazlı)
+        sku: r.sku ?? undefined,
+        barcode: r.barcode ?? undefined,
+        stock: r.stock ?? undefined,
+        options: optionMap,
+      }
+    })
+
+    // SKU çakışma kontrolü
+    let skuConflict = false
+    for (const v of variants) {
+      if (v.sku) {
+        const sk = String(v.sku).trim().toLowerCase()
+        if (processedSkus.has(sk)) {
+          errors.push({
+            index: first._index,
+            title: first.title,
+            message: `SKU '${v.sku}' bu dosyada tekrarlanıyor (grup atlandı).`,
+          })
+          skuConflict = true
+          break
+        }
+      }
+    }
+    if (skuConflict) continue
+
+    // İlk satırdan genel bilgileri al
+    const images = splitList(first.images)
+
+    try {
+      const product = await createVendorProduct(
+        req.scope,
+        resolved.seller.id,
+        resolved.seller.handle,
+        {
+          title: first.title,
+          description: first.description ?? undefined,
+          thumbnail: first.thumbnail ?? undefined,
+          images: images.length > 0 ? images : undefined,
+          weight: first.weight ?? undefined,
+          length: first.length ?? undefined,
+          width: first.width ?? undefined,
+          height: first.height ?? undefined,
+          vat_rate: first.vat_rate ?? undefined,
+          delivery_days: first.delivery_days ?? undefined,
+          material: first.material ?? undefined,
+          tags: splitList(first.tags),
+          subtitle,
+          brand_id,
+          category_ids,
+          // Çok-varyant modu
+          options,
+          variants,
+        },
+        String(first._index + 1)
+      )
+      // Tüm grup satırlarını başarılı olarak raporla
+      const warningStr = warns.length ? warns.join("; ") : undefined
+      created.push({
+        index: first._index,
+        id: product.id,
+        title: `${product.title} (${variants.length} varyant)`,
+        ...(warningStr ? { warning: warningStr } : {}),
+      })
+      // SKU'ları işlenmiş olarak kaydet
+      for (const v of variants) {
+        if (v.sku) processedSkus.add(String(v.sku).trim().toLowerCase())
+      }
+    } catch (e: any) {
+      errors.push({
+        index: first._index,
+        title: first.title,
+        message: e?.message || `Çok-varyantlı ürün oluşturulamadı (${variants.length} varyant).`,
       })
     }
   }
