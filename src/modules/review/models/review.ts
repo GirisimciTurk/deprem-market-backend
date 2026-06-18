@@ -21,6 +21,13 @@ const ProductReview = model.define("product_review", {
   comment: model.text(),
   status: model.enum(["pending", "approved", "spam"]).default("pending").index(),
   images: model.json().nullable(),
+  // --- AI moderasyon (Gemini, eşik bazlı) ---
+  // ai_action: auto_approve | auto_reject | needs_review | error
+  ai_action: model.text().nullable(),
+  // ai_verdict: modelin ham kararı (approve | reject | review)
+  ai_verdict: model.text().nullable(),
+  ai_confidence: model.number().nullable(),
+  ai_reason: model.text().nullable(),
 })
 
 export default ProductReview

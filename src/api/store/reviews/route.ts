@@ -4,6 +4,7 @@ import {
   MedusaResponse,
 } from "@medusajs/framework/http"
 import { z } from "zod"
+import { Modules } from "@medusajs/framework/utils"
 import { REVIEW_MODULE } from "../../../modules/review"
 import ReviewModuleService from "../../../modules/review/service"
 import { reviewLimiter, enforceRateLimit } from "../../../lib/rate-limiter"
@@ -102,6 +103,14 @@ export async function POST(
       > | null,
     },
   ])
+
+  // AI moderasyonu asenkron tetikle (isteği bloklamaz; subscriber işler).
+  try {
+    const eventBus = req.scope.resolve(Modules.EVENT_BUS)
+    await eventBus.emit({ name: "product_review.created", data: { id: review.id } })
+  } catch {
+    // Event yayını başarısız olsa bile yorum oluşturuldu (pending kalır).
+  }
 
   return res.status(201).json({ review })
 }

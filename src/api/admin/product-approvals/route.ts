@@ -24,6 +24,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       "thumbnail",
       "handle",
       "created_at",
+      "metadata",
       "seller.id",
       "seller.name",
       "seller.handle",
