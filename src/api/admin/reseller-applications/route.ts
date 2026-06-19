@@ -1,6 +1,7 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { RESELLER_MODULE } from "../../../modules/reseller"
 import ResellerModuleService from "../../../modules/reseller/service"
+import { validateTaxId } from "../../../lib/tax-id"
 
 /** GET /admin/reseller-applications?status=&q=&limit=&offset= */
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
@@ -30,5 +31,11 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     take: limit,
   })
 
-  return res.json({ applications, count, offset, limit })
+  // Otomatik vergi no kontrolü (offline VKN/TCKN sağlaması) — admin'e işaret verir.
+  const decorated = (applications as any[]).map((a) => ({
+    ...a,
+    tax_number_check: validateTaxId(a.tax_number),
+  }))
+
+  return res.json({ applications: decorated, count, offset, limit })
 }
