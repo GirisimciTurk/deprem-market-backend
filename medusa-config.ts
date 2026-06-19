@@ -196,5 +196,10 @@ module.exports = defineConfig({
     push: {
       resolve: "./src/modules/push",
     },
+    analytics: {
+      // Müşteri davranış olayları (product_view/search/add_to_cart/.../purchase)
+      // — first-party analitik + öneri/segment/sepet-kurtarma için temel.
+      resolve: "./src/modules/analytics",
+    },
   },
 })

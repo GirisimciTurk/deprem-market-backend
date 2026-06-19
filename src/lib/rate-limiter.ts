@@ -138,6 +138,10 @@ export const googleLinkLimiter = new RateLimiter(5, 60000, "google-link")
 export const vendorBulkLimiter = new RateLimiter(5, 60000, "vendor-bulk")
 export const vendorMessageLimiter = new RateLimiter(30, 60000, "vendor-message")
 
+// Davranış olayı alımı — yüksek frekanslı (sayfa gezme), bu yüzden lenient: IP
+// başına 120/dk. Yalnız kötüye-kullanım selini keser, normal gezinmeyi etkilemez.
+export const trackLimiter = new RateLimiter(120, 60000, "track")
+
 /**
  * Ortak yardımcı: istek IP'si için rate-limit uygula. Limitlenmişse 429 yazıp true döner;
  * çağıran route hemen `return` etmeli. ASYNC — `await enforceRateLimit(...)` olarak kullan.

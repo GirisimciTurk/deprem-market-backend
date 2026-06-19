@@ -3,6 +3,7 @@ import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { z } from "zod"
 import { isLlmEnabled, analyzeMarketplaceInsights } from "../../../lib/llm"
 import { computeSellerScorecard, computeSellerAnalytics } from "../../../lib/seller-scorecard"
+import { computeCustomerRFM, summarizeSegments } from "../../../lib/segments"
 
 const bodySchema = z.object({
   question: z.string().trim().min(3).max(400),
@@ -64,7 +65,47 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     son30g_toplam_siparis: saticilar.reduce((a, s) => a + (Number(s.son30g_siparis) || 0), 0),
   }
 
-  const snapshot = { donem: "son 30 gün", platform, saticilar }
+  // Davranış + segment snapshot — LLM funnel/arama/segment sorularını da yanıtlasın
+  // ve aksiyon önerebilsin (yalnız verilen veriden; sayı uydurmaz).
+  const knex: any = req.scope.resolve(ContainerRegistrationKeys.PG_CONNECTION)
+  const since = new Date(Date.now() - 30 * 86400000)
+  const [bt] = await knex
+    .raw(
+      `select count(*) filter (where type='product_view')  as views,
+              count(*) filter (where type='add_to_cart')    as carts,
+              count(*) filter (where type='checkout_start') as checkouts,
+              count(*) filter (where type='purchase')       as purchases
+       from analytics_event where deleted_at is null and created_at >= ?`,
+      [since]
+    )
+    .then((r: any) => r.rows)
+  const noResult: any[] = await knex
+    .raw(
+      `select lower(search_query) as q, count(*) as c
+       from analytics_event
+       where deleted_at is null and created_at >= ? and type='search'
+         and results_count = 0 and coalesce(trim(search_query),'') <> ''
+       group by 1 order by c desc limit 5`,
+      [since]
+    )
+    .then((r: any) => r.rows)
+  const segOzet = summarizeSegments(await computeCustomerRFM(req.scope)).map((s) => ({
+    segment: s.label,
+    musteri_sayisi: s.count,
+    toplam_harcama_TL: tl(s.total_monetary),
+  }))
+  const davranis = {
+    son30g_funnel: {
+      goruntuleme: Number(bt?.views || 0),
+      sepete_ekleme: Number(bt?.carts || 0),
+      odemeye_gecis: Number(bt?.checkouts || 0),
+      satin_alma: Number(bt?.purchases || 0),
+    },
+    sonucsuz_aramalar: noResult.map((r) => ({ arama: r.q, sayi: Number(r.c) })),
+    musteri_segmentleri: segOzet,
+  }
+
+  const snapshot = { donem: "son 30 gün", platform, saticilar, davranis }
 
   const out = await analyzeMarketplaceInsights({ question: parsed.data.question, snapshot })
   if (!out.ok) return res.json({ answer: "", error: out.error })
