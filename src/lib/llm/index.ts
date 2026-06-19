@@ -507,3 +507,58 @@ export async function coachScorecard(input: {
   if (!advice) return { ok: false, error: "Boş öneri" }
   return { ok: true, advice }
 }
+
+// ─────────────────────────── Blog yazısı üretimi ───────────────────────────
+
+export type GeneratedBlogPost = {
+  title: string
+  slug: string
+  summary: string
+  content: string // Markdown (storefront marked.parse ile HTML'e çevirir)
+  category: string
+}
+
+const BLOG_POST_SCHEMA = {
+  type: "object",
+  properties: {
+    title: { type: "string" },
+    slug: { type: "string" },
+    summary: { type: "string" },
+    content: { type: "string" },
+    category: { type: "string" },
+  },
+  required: ["title", "slug", "summary", "content", "category"],
+} as const
+
+/**
+ * Verilen konudan Türkçe, SEO-dostu bir blog yazısı üretir. `content` MARKDOWN'dır
+ * (storefront `marked.parse` ile HTML'e çevirir). Afet/deprem hazırlık temalı;
+ * uydurma istatistik/iddia EKLEMEZ (fail-safe içerik). Taslak olarak kaydedilip
+ * admin tarafından düzenlenip yayınlanması beklenir.
+ */
+export async function generateBlogPost(input: {
+  topic: string
+  category?: string | null
+  keywords?: string | null
+}): Promise<{ ok: true; data: GeneratedBlogPost } | { ok: false; error: string }> {
+  const system =
+    "Sen afet ve deprem hazırlığı konusunda uzman bir Türkçe içerik editörüsün. Verilen konudan " +
+    "özgün, doğru ve SEO-dostu bir blog yazısı üret. KURALLAR: Uydurma istatistik, tarih veya " +
+    "bilimsel iddia EKLEME; emin olmadığın sayısal veriyi yazma. Öneriler genel-geçer ve güvenli " +
+    "olsun (resmî afet hazırlık tavsiyeleriyle uyumlu). `content` MARKDOWN olmalı: '## ' alt " +
+    "başlıklar, kısa paragraflar, '- ' madde listeleri; yaklaşık 500-900 kelime. `title` ilgi çekici " +
+    "ama abartısız. `summary` 1-2 cümle. `slug` title'dan türetilmiş kısa, ascii, tireli (ör. " +
+    "deprem-cantasi-nasil-hazirlanir). `category` kısa bir kategori adı."
+  const userText =
+    `Konu: ${input.topic}\n` +
+    `Tercih edilen kategori: ${input.category ?? "(serbest)"}\n` +
+    `Anahtar kelimeler: ${input.keywords ?? "(yok)"}`
+  const res = await geminiGenerate<GeneratedBlogPost>({
+    system,
+    userText,
+    jsonSchema: BLOG_POST_SCHEMA as unknown as Record<string, unknown>,
+    temperature: 0.7,
+  })
+  if (!res.ok) return { ok: false, error: res.error }
+  return { ok: true, data: res.data }
+}
