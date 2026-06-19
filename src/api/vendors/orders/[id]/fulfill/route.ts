@@ -9,6 +9,7 @@ import {
   CARRIER_CODES,
   getTrackingUrl,
   DEFAULT_CARRIER,
+  LOCK_PLATFORM_CARRIER,
   isPlatformCarrier,
   CarrierCode,
 } from "../../../../../lib/cargo"
@@ -48,10 +49,14 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   }
 
   // Kargo firması: gövdeden gelen > satıcının varsayılanı > sistem varsayılanı.
-  const carrier: CarrierCode =
-    (parsed.data.carrier as CarrierCode) ||
-    ((resolved.seller as any).default_carrier as CarrierCode) ||
-    DEFAULT_CARRIER
+  // ŞİMDİLİK KİLİT (LOCK_PLATFORM_CARRIER): firma seçimi kapalıyken gövdede ne
+  // gelirse gelsin anlaşmalı kargoya (Yurtiçi) sabitlenir — herkes anlaşmalı
+  // platformla gönderir, kargo ücreti hak edişten düşülür (isPlatformCarrier).
+  const carrier: CarrierCode = LOCK_PLATFORM_CARRIER
+    ? DEFAULT_CARRIER
+    : (parsed.data.carrier as CarrierCode) ||
+      ((resolved.seller as any).default_carrier as CarrierCode) ||
+      DEFAULT_CARRIER
   const trackingNumber = (parsed.data.tracking_number || "").trim() || null
   // "Diğer" firmada takip linki şablondan üretilemez → satıcının girdiği URL
   // kullanılır. Tanımlı firmalarda link cargo.ts şablonundan üretilir.

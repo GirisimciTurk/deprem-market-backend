@@ -122,6 +122,19 @@ export const DEFAULT_CARRIER: CarrierCode =
   (process.env.DEFAULT_CARGO_CARRIER as CarrierCode) || "yurtici"
 
 /**
+ * ŞİMDİLİK KİLİT — kargo firması seçimi kapalı.
+ *
+ * Satıcı/admin kargo firması SEÇEMEZ; tüm gönderiler platformun anlaşmalı
+ * kargosuyla (DEFAULT_CARRIER = Yurtiçi) yapılır ("herkes anlaştığımız platformla
+ * göndersin"). Fulfill ucu, gövdeden ne gelirse gelsin firmayı Yurtiçi'ye sabitler.
+ *
+ * Seçimi tekrar açmak için ortam değişkeni UNLOCK_CARRIER_CHOICE=true yap
+ * (veya bu satırı `false` ile değiştir).
+ */
+export const LOCK_PLATFORM_CARRIER: boolean =
+  process.env.UNLOCK_CARRIER_CHOICE !== "true"
+
+/**
  * Bu firma platformun "anlaşmalı kargosu" mu? Anlaşmalı kargoda satıcının
  * hak edişinden kargo ücreti düşülür; satıcının kendi kargosunda düşülmez.
  */

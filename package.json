@@ -18,7 +18,6 @@
     "dev": "medusa develop",
     "db:generate": "medusa db:generate",
     "db:migrate": "medusa db:migrate",
-    "seed": "medusa exec medusa-config.ts -- node node_modules/@medusajs/medusa/dist/commands/seed.js --seed-file=./src/scripts/seed.ts",
     "setup:cargo": "medusa exec ./src/scripts/setup-cargo.ts",
     "setup:inventory": "medusa exec ./src/scripts/setup-inventory.ts",
     "setup:returns": "medusa exec ./src/scripts/setup-returns.ts",

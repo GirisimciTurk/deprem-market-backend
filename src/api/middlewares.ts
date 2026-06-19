@@ -98,6 +98,8 @@ const ADMIN_ONLY_MATCHERS = [
   "/admin/invoices*",
   "/admin/storefront-settings*",
   "/admin/order-refunds*",
+  // AI doğal-dil analitiği — tüm satıcıların ciro/iade verisini gösterir, yalnız admin.
+  "/admin/ai-insights",
   // Stok/envanter mutasyonları (değer-etkili; kontrol merkezi modelinde satış
   // operasyonu satıcı panelinde, bunlar legacy) — yalnız admin.
   "/admin/stock-adjust*",

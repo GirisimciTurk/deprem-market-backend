@@ -176,3 +176,334 @@ export async function generateProductInfo(input: {
   if (!res.ok) return { ok: false, error: res.error }
   return { ok: true, data: res.data }
 }
+
+// ─────────────────────────── Görev 5: Kategori önerisi (sınıflandırma) ───────────────────────────
+
+/** Satıcının ürünü için MEVCUT listeden önerilen kategori. category_id daima listede. */
+export type CategorySuggestion = {
+  category_id: string
+  confidence: number
+  reason: string
+  alternates: string[]
+}
+
+/**
+ * Ürün başlığı/açıklamasından, VERİLEN gerçek kategori listesinden en uygun
+ * kategoriyi seçer. Çıktı `category_id` (ve alternatifler) JSON şema `enum`'ı ile
+ * listedeki id'lere KISITLANIR → model liste dışı kategori uyduramaz. Ek doğrulama
+ * olarak dönen id listede mi diye kontrol edilir (fail-closed).
+ */
+export async function suggestProductCategory(input: {
+  title: string
+  description?: string | null
+  categories: { id: string; path: string }[]
+}): Promise<{ ok: true; data: CategorySuggestion } | { ok: false; error: string }> {
+  const cats = (input.categories ?? []).filter((c) => c?.id && c?.path)
+  if (cats.length === 0) return { ok: false, error: "Kategori listesi boş" }
+  const ids = cats.map((c) => c.id)
+
+  const schema = {
+    type: "object",
+    properties: {
+      category_id: { type: "string", enum: ids },
+      confidence: { type: "number" },
+      reason: { type: "string" },
+      alternates: { type: "array", items: { type: "string", enum: ids } },
+    },
+    required: ["category_id", "confidence", "reason", "alternates"],
+  } as const
+
+  const system =
+    "Sen bir Türkçe pazaryeri kategori sınıflandırma uzmanısın. Verilen ürün için AŞAĞIDAKİ " +
+    "LİSTEDEN en uygun kategoriyi seç. SADECE listedeki id'lerden birini döndür; liste dışı " +
+    "kategori UYDURMA. category_id: en uygun kategorinin id'si. alternates: 0-2 makul alternatif " +
+    "kategori id'si (en uygundan sonra, gerçekten uygunsa). confidence: 0-1 arası gerçekçi güven " +
+    "(emin değilsen düşük tut). reason: neden bu kategori, tek kısa Türkçe cümle."
+  const list = cats.map((c) => `${c.id} — ${c.path}`).join("\n")
+  const userText =
+    `Ürün başlığı: ${input.title}\n` +
+    (input.description ? `Açıklama: ${input.description}\n` : "") +
+    `\nKategoriler (id — yol):\n${list}`
+
+  const res = await geminiGenerate<CategorySuggestion>({
+    system,
+    userText,
+    jsonSchema: schema as unknown as Record<string, unknown>,
+    temperature: 0,
+  })
+  if (!res.ok) return { ok: false, error: res.error }
+  const d = res.data
+  if (!d || typeof d.category_id !== "string" || !ids.includes(d.category_id)) {
+    return { ok: false, error: "Geçersiz kategori önerisi" }
+  }
+  const confidence = Math.max(0, Math.min(1, Number(d.confidence) || 0))
+  const alternates = Array.isArray(d.alternates)
+    ? d.alternates.filter((a) => ids.includes(a) && a !== d.category_id).slice(0, 2)
+    : []
+  return { ok: true, data: { category_id: d.category_id, confidence, reason: String(d.reason ?? ""), alternates } }
+}
+
+// ─────────────────────────── Görev 6: Deprem hazırlık seti önerisi ───────────────────────────
+
+export type KitItem = { product_id: string; quantity: number; reason: string }
+export type PreparednessKit = { items: KitItem[]; summary: string }
+
+/**
+ * Müşterinin serbest-metin ihtiyacından (ör. "2 kişilik ev + 1 bebek, 3 gün") VERİLEN
+ * gerçek ürün listesinden bir hazırlık seti önerir. product_id'ler JSON şema `enum`'ı
+ * ile listeye KISITLI → model olmayan ürün uyduramaz. Dönen id'ler ayrıca doğrulanır.
+ */
+export async function recommendPreparednessKit(input: {
+  need: string
+  products: { id: string; title: string; category: string }[]
+}): Promise<{ ok: true; data: PreparednessKit } | { ok: false; error: string }> {
+  const prods = (input.products ?? []).filter((p) => p?.id && p?.title)
+  if (prods.length === 0) return { ok: false, error: "Ürün listesi boş" }
+  const ids = prods.map((p) => p.id)
+
+  const schema = {
+    type: "object",
+    properties: {
+      items: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            product_id: { type: "string", enum: ids },
+            quantity: { type: "integer" },
+            reason: { type: "string" },
+          },
+          required: ["product_id", "quantity", "reason"],
+        },
+      },
+      summary: { type: "string" },
+    },
+    required: ["items", "summary"],
+  } as const
+
+  const system =
+    "Sen bir afet/deprem hazırlık uzmanısın. Müşterinin ihtiyacına göre AŞAĞIDAKİ ürün " +
+    "listesinden dengeli, gerçekçi bir hazırlık seti öner. SADECE listedeki product_id'leri " +
+    "kullan; liste dışı ürün UYDURMA. Kişi sayısı, süre, bebek/yaşlı/evcil hayvan gibi özel " +
+    "durumlara göre makul ADET ver (su/gıda kişi ve güne göre artar). Su, gıda, ışık/enerji, " +
+    "ilk yardım, ısınma, güvenlik/iletişim gibi temel ihtiyaçları dengeli kapsamaya çalış. " +
+    "4-12 kalem yeterli. reason: bu ürün neden sette, kısa Türkçe. summary: setin 1-2 cümlelik " +
+    "Türkçe açıklaması. Uygun ürün yoksa items boş bırak."
+  const list = prods.map((p) => `${p.id} | ${p.title}${p.category ? ` [${p.category}]` : ""}`).join("\n")
+  const userText = `Müşteri ihtiyacı: ${input.need}\n\nÜrünler (id | ad [kategori]):\n${list}`
+
+  const res = await geminiGenerate<PreparednessKit>({
+    system,
+    userText,
+    jsonSchema: schema as unknown as Record<string, unknown>,
+    temperature: 0.3,
+  })
+  if (!res.ok) return { ok: false, error: res.error }
+  const d = res.data
+  if (!d || !Array.isArray(d.items)) return { ok: false, error: "Geçersiz set yapısı" }
+  const seen = new Set<string>()
+  const items: KitItem[] = []
+  for (const it of d.items) {
+    if (!it || typeof it.product_id !== "string" || !ids.includes(it.product_id) || seen.has(it.product_id)) continue
+    seen.add(it.product_id)
+    items.push({
+      product_id: it.product_id,
+      quantity: Math.max(1, Math.min(99, Math.round(Number(it.quantity) || 1))),
+      reason: String(it.reason ?? ""),
+    })
+  }
+  return { ok: true, data: { items, summary: String(d.summary ?? "") } }
+}
+
+// ─────────────────────────── Görev 7: Hazırlık & Güvenlik Asistanı (niyet + rehberlik) ───────────────────────────
+
+export type AssistResult = {
+  /** Türkçe konuşma yanıtı: set özeti VEYA güvenlik rehberliği. */
+  answer: string
+  /** Önerilen ürünler (saf soru/rehberlikte boş olabilir). */
+  items: KitItem[]
+  /** Yapısal/profesyonel KEŞİF gerekiyor mu (kolon/çatlak/bina güvenliği). */
+  recommend_survey: boolean
+  /** Keşif neden gerekli — kısa Türkçe (recommend_survey true ise). */
+  survey_reason: string
+}
+
+/**
+ * Deprem Hazırlık & Güvenlik Asistanı. Kullanıcı mesajını sınıflandırır:
+ *  - Hazırlık/ürün isteği → listeden DENGELİ set (items) + kısa özet (answer).
+ *  - Genel güvenlik sorusu → eyleme dönük rehberlik (answer) + uygunsa ürünler.
+ *  - YAPISAL/BİNA güvenliği → ASLA kesin hüküm verme; genel bilgi + "uzman keşfi şart"
+ *    (recommend_survey=true). Bu hayati/hukuki sınır prompt'ta zorlanır.
+ * product_id'ler JSON şema enum'ı ile gerçek listeye kısıtlı.
+ */
+export async function assistPreparedness(input: {
+  message: string
+  products: { id: string; title: string; category: string }[]
+}): Promise<{ ok: true; data: AssistResult } | { ok: false; error: string }> {
+  const prods = (input.products ?? []).filter((p) => p?.id && p?.title)
+  if (prods.length === 0) return { ok: false, error: "Ürün listesi boş" }
+  const ids = prods.map((p) => p.id)
+
+  const schema = {
+    type: "object",
+    properties: {
+      answer: { type: "string" },
+      items: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            product_id: { type: "string", enum: ids },
+            quantity: { type: "integer" },
+            reason: { type: "string" },
+          },
+          required: ["product_id", "quantity", "reason"],
+        },
+      },
+      recommend_survey: { type: "boolean" },
+      survey_reason: { type: "string" },
+    },
+    required: ["answer", "items", "recommend_survey", "survey_reason"],
+  } as const
+
+  const system =
+    "Sen depremTek pazaryerinin Türkçe 'Deprem Hazırlık & Güvenlik Asistanı'sın. Kullanıcı ya " +
+    "bir hazırlık seti ister ya da bir soru/endişe paylaşır.\n" +
+    "- HAZIRLIK/ÜRÜN isteğinde: AŞAĞIDAKİ listeden dengeli bir set öner (items: su, gıda, ışık/enerji, " +
+    "ilk yardım, ısınma, güvenlik/iletişim dengeli; kişi/gün/özel duruma göre makul adet). answer'da 1-2 cümle özet.\n" +
+    "- GENEL güvenlik/hazırlık sorusunda: answer'da kısa, doğru, eyleme dönük Türkçe rehberlik ver; uygunsa ilgili ürünleri items'a ekle.\n" +
+    "- YAPISAL / BİNA GÜVENLİĞİ konuları (kolon, kiriş, çatlak, bina sağlamlığı, hasar, 'oturulur mu', güçlendirme): " +
+    "ASLA kesin hüküm VERME — 'güvenli', 'güvenli değil', 'yıkılır', 'oturulmaz' gibi yargılarda BULUNMA. " +
+    "Genel bilgilendirme + neyi gözlemleyebileceği + acil tehlikede ne YAPMAMASI gerektiğini söyle; " +
+    "kesin değerlendirmenin ancak ruhsatlı bir inşaat mühendisinin YERİNDE keşfiyle yapılabileceğini belirt. " +
+    "Bu durumda recommend_survey=true ve survey_reason'da kısa neden yaz (ürün önermek zorunda değilsin).\n" +
+    "SADECE listedeki product_id'leri kullan; liste dışı ürün UYDURMA. Tıbbi/hukuki/mühendislik KESİN tavsiyesi verme. " +
+    "answer daima Türkçe ve kısa olsun."
+  const list = prods.map((p) => `${p.id} | ${p.title}${p.category ? ` [${p.category}]` : ""}`).join("\n")
+  const userText = `Kullanıcı mesajı: ${input.message}\n\nÜrünler (id | ad [kategori]):\n${list}`
+
+  const res = await geminiGenerate<AssistResult>({
+    system,
+    userText,
+    jsonSchema: schema as unknown as Record<string, unknown>,
+    temperature: 0.3,
+  })
+  if (!res.ok) return { ok: false, error: res.error }
+  const d = res.data
+  if (!d || typeof d.answer !== "string") return { ok: false, error: "Geçersiz asistan yanıtı" }
+  const seen = new Set<string>()
+  const items: KitItem[] = []
+  for (const it of Array.isArray(d.items) ? d.items : []) {
+    if (!it || typeof it.product_id !== "string" || !ids.includes(it.product_id) || seen.has(it.product_id)) continue
+    seen.add(it.product_id)
+    items.push({
+      product_id: it.product_id,
+      quantity: Math.max(1, Math.min(99, Math.round(Number(it.quantity) || 1))),
+      reason: String(it.reason ?? ""),
+    })
+  }
+  return {
+    ok: true,
+    data: {
+      answer: String(d.answer ?? ""),
+      items,
+      recommend_survey: !!d.recommend_survey,
+      survey_reason: String(d.survey_reason ?? ""),
+    },
+  }
+}
+
+// ─────────────────────────── Görev 8: Satıcı yanıt taslağı (S-C + mesaj) ───────────────────────────
+
+/**
+ * Satıcı adına müşteriye KISA, kibar bir yanıt TASLAĞI üretir (satıcı düzenleyip
+ * gönderir). Ürün sorusu veya mesajlaşma için. Düz metin döner. Guardrail: gerçek
+ * olmayan özellik/söz uydurmaz; emin olmadığında "kontrol edip döneyim" der.
+ */
+export async function draftSellerReply(input: {
+  kind: "question" | "message"
+  productTitle?: string | null
+  customerText: string
+  history?: { role: "customer" | "seller"; text: string }[]
+}): Promise<{ ok: true; draft: string } | { ok: false; error: string }> {
+  if (!input.customerText || !input.customerText.trim()) {
+    return { ok: false, error: "Yanıtlanacak içerik yok" }
+  }
+  const system =
+    "Sen bir Türkçe pazaryeri satıcısının müşteri iletişim asistanısın. Satıcı ADINA, müşteriye " +
+    "gönderilmek üzere KISA (2-5 cümle), kibar, yardımsever ve net bir yanıt TASLAĞI yaz; satıcı " +
+    "bunu düzenleyip gönderecek. Gerçek olmayan teknik özellik, stok, fiyat veya teslimat SÖZÜ " +
+    "UYDURMA; emin olmadığın bir bilgide 'kontrol edip en kısa sürede döneceğim' gibi ifade kullan. " +
+    "Müşteriden kişisel/iletişim verisi İSTEME. Yalnızca gönderilecek yanıt metnini döndür — " +
+    "tırnak, başlık veya ek açıklama EKLEME."
+
+  let userText: string
+  if (input.kind === "question") {
+    userText =
+      `Bu bir ÜRÜN SORUSU.\n` +
+      (input.productTitle ? `Ürün: ${input.productTitle}\n` : "") +
+      `Müşteri sorusu: """${input.customerText}"""`
+  } else {
+    const hist = (input.history ?? [])
+      .slice(-10)
+      .map((m) => `${m.role === "seller" ? "Satıcı" : "Müşteri"}: ${m.text}`)
+      .join("\n")
+    userText =
+      `Bu bir MÜŞTERİ MESAJLAŞMASI.\n` +
+      (input.productTitle ? `Konu/ürün: ${input.productTitle}\n` : "") +
+      (hist ? `Konuşma geçmişi:\n${hist}\n\n` : "") +
+      `Son müşteri mesajı: """${input.customerText}"""`
+  }
+
+  const res = await geminiGenerate<string>({ system, userText, temperature: 0.4 })
+  if (!res.ok) return { ok: false, error: res.error }
+  const draft = (res.data || "").toString().trim()
+  if (!draft) return { ok: false, error: "Boş taslak" }
+  return { ok: true, draft }
+}
+
+// ─────────────────────────── Görev 9: Admin doğal-dil analitiği ───────────────────────────
+
+/**
+ * Yöneticinin Türkçe sorusunu, SADECE verilen pazaryeri veri snapshot'ından yanıtlar.
+ * Veride olmayan sayı/satıcı uydurmaz (RAG — DB sorgusu çalıştırmaz, enjeksiyon riski yok).
+ */
+export async function analyzeMarketplaceInsights(input: {
+  question: string
+  snapshot: unknown
+}): Promise<{ ok: true; answer: string } | { ok: false; error: string }> {
+  if (!input.question || !input.question.trim()) return { ok: false, error: "Soru boş" }
+  const system =
+    "Sen depremTek pazaryeri yöneticisinin Türkçe veri analistisin. SADECE sana verilen JSON " +
+    "verisinden yanıtla; veride OLMAYAN sayı, satıcı veya bilgi UYDURMA. Soruyu kısa ve net " +
+    "Türkçe yanıtla; ilgili sayıları belirt (parasal değerler ₺/lira). Karşılaştırma istenirse " +
+    "ilgili satıcıları sırala. Veri yetersizse 'bu veriyle yanıtlanamıyor' de — tahmin etme."
+  const userText = `Yönetici sorusu: ${input.question}\n\nPazaryeri verisi (JSON):\n${JSON.stringify(input.snapshot)}`
+  const res = await geminiGenerate<string>({ system, userText, temperature: 0.2 })
+  if (!res.ok) return { ok: false, error: res.error }
+  const answer = (res.data || "").toString().trim()
+  if (!answer) return { ok: false, error: "Boş yanıt" }
+  return { ok: true, answer }
+}
+
+// ─────────────────────────── Görev 10: Satıcı karne koçluğu ───────────────────────────
+
+/**
+ * Satıcının performans karnesinden (JSON) öncelikli, somut, uygulanabilir Türkçe
+ * öneriler üretir (en zayıf metrikleri hedefler). Veride olmayan şey uydurmaz.
+ */
+export async function coachScorecard(input: {
+  scorecard: unknown
+}): Promise<{ ok: true; advice: string } | { ok: false; error: string }> {
+  const system =
+    "Sen bir Türkçe pazaryeri satıcı performans koçusun. Satıcının karne verisinden (JSON) " +
+    "ÖNCELİKLİ, somut ve uygulanabilir 2-4 öneri ver (madde işaretleriyle). En zayıf metrikleri " +
+    "hedefle: zamanında kargo, müşteri puanı, iade oranı, soru yanıtlama, iptal oranı. Güçlü " +
+    "yönleri kısaca takdir et. Veride olmayan bilgi uydurma. Yapıcı, motive edici ve kısa ol."
+  const userText = `Satıcı performans karnesi (JSON):\n${JSON.stringify(input.scorecard)}`
+  const res = await geminiGenerate<string>({ system, userText, temperature: 0.4 })
+  if (!res.ok) return { ok: false, error: res.error }
+  const advice = (res.data || "").toString().trim()
+  if (!advice) return { ok: false, error: "Boş öneri" }
+  return { ok: true, advice }
+}

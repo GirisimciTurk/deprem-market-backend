@@ -7,6 +7,8 @@
  * Anahtar `GEMINI_API_KEY`, model `GEMINI_MODEL` env'inden okunur — koda yazılmaz.
  */
 
+import { createHash } from "crypto"
+
 const API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
 export type LlmImage = {
@@ -29,6 +31,12 @@ export type GenerateOptions = {
   temperature?: number
   /** Zaman aşımı (ms). */
   timeoutMs?: number
+  /**
+   * Model override (kalite katmanı). Verilmezse GEMINI_MODEL kullanılır.
+   * Üretken görevler güçlü modeli (GEMINI_MODEL_PRO), sınıflandırma/moderasyon
+   * hızlı/ucuz varsayılanı kullansın diye helper'lar bunu set eder.
+   */
+  model?: string
 }
 
 export type GenerateResult<T = string> =
@@ -61,11 +69,43 @@ export async function fetchImageAsBase64(
   }
 }
 
-function getConfig(): { apiKey: string; model: string } | null {
+function getConfig(modelOverride?: string): { apiKey: string; model: string } | null {
   const apiKey = process.env.GEMINI_API_KEY?.trim()
-  const model = (process.env.GEMINI_MODEL || "gemini-3.1-flash-lite").trim()
+  const model = (modelOverride?.trim() || process.env.GEMINI_MODEL || "gemini-3.1-flash-lite").trim()
   if (!apiKey) return null
   return { apiKey, model }
+}
+
+// ─── Yanıt önbreği (maliyet/gecikme) ───────────────────────────────────────
+// Aynı (model + istek gövdesi) için Gemini'yi tekrar çağırmaz. Süreç-içi, TTL'li,
+// boyut-sınırlı. Yalnız BAŞARILI sonuçlar önbreklenir. LLM_CACHE=off ile kapatılır.
+type CacheEntry = { at: number; value: GenerateResult<unknown> }
+const LLM_CACHE = new Map<string, CacheEntry>()
+const CACHE_TTL = Number(process.env.LLM_CACHE_TTL_MS || 60 * 60 * 1000)
+const CACHE_MAX = 500
+const cacheEnabled = () => process.env.LLM_CACHE !== "off" && CACHE_TTL > 0
+
+function cacheGet(key: string): GenerateResult<unknown> | null {
+  if (!cacheEnabled()) return null
+  const e = LLM_CACHE.get(key)
+  if (!e) return null
+  if (Date.now() - e.at > CACHE_TTL) {
+    LLM_CACHE.delete(key)
+    return null
+  }
+  // LRU dokunuşu: en sona taşı.
+  LLM_CACHE.delete(key)
+  LLM_CACHE.set(key, e)
+  return e.value
+}
+
+function cacheSet(key: string, value: GenerateResult<unknown>): void {
+  if (!cacheEnabled()) return
+  if (LLM_CACHE.size >= CACHE_MAX) {
+    const oldest = LLM_CACHE.keys().next().value
+    if (oldest) LLM_CACHE.delete(oldest)
+  }
+  LLM_CACHE.set(key, { at: Date.now(), value })
 }
 
 /** AI moderasyonu açık mı? (env ile kapatılabilir → fail-open için kontrol). */
