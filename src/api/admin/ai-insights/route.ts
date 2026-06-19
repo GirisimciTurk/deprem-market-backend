@@ -33,31 +33,34 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     pagination: { take: 50 },
   })
 
-  const saticilar: Record<string, unknown>[] = []
-  for (const s of (sellers as any[] | undefined ?? [])) {
-    const [sc, an] = await Promise.all([
-      computeSellerScorecard(req.scope, s.id),
-      computeSellerAnalytics(req.scope, s.id, 30),
-    ])
-    saticilar.push({
-      satici: s.name,
-      ana_magaza: !!s.is_house,
-      komisyon_yuzde: s.commission_rate ?? null,
-      karne_notu: sc.has_data ? sc.grade : "veri yok",
-      karne_skoru: sc.has_data ? sc.overall_score : null,
-      son30g_siparis: an.totals.orders,
-      son30g_ciro_TL: tl(an.totals.sales),
-      son30g_net_TL: tl(an.totals.earning),
-      musteri_puani: sc.rating.count > 0 ? sc.rating.avg : null,
-      puan_sayisi: sc.rating.count,
-      iade_orani_yuzde: Math.round(sc.returns.return_rate * 100),
-      iadeli_siparis: sc.returns.returned_order_count,
-      toplam_siparis: sc.returns.total_order_count,
-      zamaninda_kargo_yuzde: Math.round(sc.shipping.on_time_rate * 100),
-      iptal_orani_yuzde: Math.round(sc.cancellation.cancel_rate * 100),
-      soru_yanitlama_yuzde: Math.round(sc.questions.answer_rate * 100),
+  // Satıcılar paralel işlenir (her biri scorecard+analytics) — sıralı döngü yerine
+  // Promise.all (seller-scorecards route'uyla aynı desen). 50 satıcıda belirgin hız.
+  const saticilar: Record<string, unknown>[] = await Promise.all(
+    (sellers as any[] | undefined ?? []).map(async (s) => {
+      const [sc, an] = await Promise.all([
+        computeSellerScorecard(req.scope, s.id),
+        computeSellerAnalytics(req.scope, s.id, 30),
+      ])
+      return {
+        satici: s.name,
+        ana_magaza: !!s.is_house,
+        komisyon_yuzde: s.commission_rate ?? null,
+        karne_notu: sc.has_data ? sc.grade : "veri yok",
+        karne_skoru: sc.has_data ? sc.overall_score : null,
+        son30g_siparis: an.totals.orders,
+        son30g_ciro_TL: tl(an.totals.sales),
+        son30g_net_TL: tl(an.totals.earning),
+        musteri_puani: sc.rating.count > 0 ? sc.rating.avg : null,
+        puan_sayisi: sc.rating.count,
+        iade_orani_yuzde: Math.round(sc.returns.return_rate * 100),
+        iadeli_siparis: sc.returns.returned_order_count,
+        toplam_siparis: sc.returns.total_order_count,
+        zamaninda_kargo_yuzde: Math.round(sc.shipping.on_time_rate * 100),
+        iptal_orani_yuzde: Math.round(sc.cancellation.cancel_rate * 100),
+        soru_yanitlama_yuzde: Math.round(sc.questions.answer_rate * 100),
+      }
     })
-  }
+  )
 
   const platform = {
     satici_sayisi: saticilar.length,

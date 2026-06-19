@@ -37,6 +37,10 @@ const AnalyticsEvent = model.define("analytics_event", {
   quantity: model.number().nullable(),
   currency_code: model.text().nullable(),
   metadata: model.json().nullable(),
-})
+}).indexes([
+  // Admin overview sorguları daima (deleted_at IS NULL, created_at >= ?, type=?)
+  // ile filtreler — bileşik kısmi index, tablo büyüdükçe tarama yerine seek sağlar.
+  { on: ["created_at", "type"], where: "deleted_at IS NULL" },
+])
 
 export default AnalyticsEvent

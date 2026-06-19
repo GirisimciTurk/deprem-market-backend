@@ -303,6 +303,15 @@
           "expression": "CREATE INDEX IF NOT EXISTS \"IDX_analytics_event_deleted_at\" ON \"analytics_event\" (\"deleted_at\") WHERE deleted_at IS NULL"
         },
         {
+          "keyName": "IDX_analytics_event_created_at_type",
+          "columnNames": [],
+          "composite": false,
+          "constraint": false,
+          "primary": false,
+          "unique": false,
+          "expression": "CREATE INDEX IF NOT EXISTS \"IDX_analytics_event_created_at_type\" ON \"analytics_event\" (\"created_at\", \"type\") WHERE deleted_at IS NULL"
+        },
+        {
           "keyName": "analytics_event_pkey",
           "columnNames": [
             "id"
