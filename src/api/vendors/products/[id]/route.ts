@@ -46,6 +46,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       "categories.id", "categories.name",
       "seller.id",
       "variants.id", "variants.title", "variants.sku", "variants.barcode",
+      "variants.weight", "variants.length", "variants.width", "variants.height",
+      "variants.metadata",
       "variants.prices.amount", "variants.prices.currency_code",
       "variants.options.value", "variants.options.option.title",
       "variants.inventory_items.inventory.location_levels.stocked_quantity",
@@ -58,15 +60,18 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     return res.status(404).json({ message: "Ürün bulunamadı." })
   }
 
-  // Varyantlara açılış stoğunu (lokasyon seviyeleri toplamı) ekle.
+  // Varyantlara açılış stoğunu (lokasyon seviyeleri toplamı) ekle. Liste GET'iyle
+  // tutarlı: seviye hiç yoksa null (henüz stoklanmamış), varsa toplam.
   for (const v of product.variants ?? []) {
     let qty = 0
+    let hasLevel = false
     for (const ii of v.inventory_items ?? []) {
       for (const lvl of ii.inventory?.location_levels ?? []) {
         qty += Number(lvl.stocked_quantity ?? 0)
+        hasLevel = true
       }
     }
-    v.inventory_quantity = qty
+    v.inventory_quantity = hasLevel ? qty : null
   }
   // Görselleri rank'a göre sırala (ilk = ana).
   if (Array.isArray(product.images)) {
@@ -116,9 +121,15 @@ const updateSchema = z.object({
         id: z.string().optional(),
         title: z.string().optional(),
         price: z.number().positive(),
+        original_price: z.number().positive().optional().nullable(),
         sku: z.string().optional().nullable(),
         barcode: z.string().optional().nullable(),
         stock: z.coerce.number().int().min(0).optional(),
+        // Varyant bazında boyut/ağırlık (OPSİYONEL override; weight=gram, ölçüler=cm).
+        weight: z.number().positive().optional().nullable(),
+        length: z.number().positive().optional().nullable(),
+        width: z.number().positive().optional().nullable(),
+        height: z.number().positive().optional().nullable(),
         options: z.record(z.string(), z.string()),
       })
     )
@@ -249,6 +260,20 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     update.options = (data.options ?? []).map((o) => ({ title: o.title.trim(), values: o.values }))
     update.variants = data.variants!.map((v) => {
       const id = v.id ?? keyToId.get(optKey(v.options))
+      // Varyant bazında boyut override (verilenleri yaz; verilmeyen değişmez).
+      const dims: Record<string, number | null> = {}
+      if (v.weight !== undefined) dims.weight = v.weight ?? null
+      if (v.length !== undefined) dims.length = v.length ?? null
+      if (v.width !== undefined) dims.width = v.width ?? null
+      if (v.height !== undefined) dims.height = v.height ?? null
+      // Varyant indirimsiz fiyatı → varyant metadata.compare_at_price.
+      let variantMeta: Record<string, unknown> | undefined
+      if (v.original_price !== undefined) {
+        variantMeta = {}
+        if (v.original_price != null && v.original_price > v.price) {
+          variantMeta.compare_at_price = v.original_price
+        }
+      }
       return {
         ...(id ? { id } : {}),
         title: v.title?.trim() || Object.values(v.options).join(" / "),
@@ -256,6 +281,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         sku: v.sku?.trim() || null,
         barcode: v.barcode?.trim() || null,
         prices: [{ amount: Math.round(v.price * 100), currency_code: "try" }],
+        ...dims,
+        ...(variantMeta ? { metadata: variantMeta } : {}),
       }
     })
   }

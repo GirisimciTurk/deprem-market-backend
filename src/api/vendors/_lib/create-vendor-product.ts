@@ -29,6 +29,13 @@ export type VendorVariantInput = {
   sku?: string | null
   barcode?: string | null
   stock?: number | null
+  // --- Varyant bazında boyut/ağırlık (OPSİYONEL override) ---
+  // Verilmezse ürün-seviyesi boyut kargo desisi için fallback kullanılır.
+  // weight = GRAM; length/width/height = cm.
+  weight?: number | null
+  length?: number | null
+  width?: number | null
+  height?: number | null
   /** Seçenek eşlemesi: { Beden: "M", Renk: "Kırmızı" } */
   options: Record<string, string>
 }
@@ -57,7 +64,8 @@ export type VendorProductInput = {
   // --- KDV oranı (%) ve kargoya veriliş (termin) süresi (gün) ---
   vat_rate?: number | null
   delivery_days?: number | null
-  // --- Kargo / boyut (kg & cm; desi storefront/kargo için) ---
+  // --- Kargo / boyut (ürün-seviyesi varsayılan; weight=GRAM, length/width/height=cm;
+  // desi storefront/kargo için. cargo-fee/split-order /1000 ile kg'a çevirir.) ---
   weight?: number | null
   length?: number | null
   width?: number | null
@@ -120,10 +128,22 @@ export async function createVendorProduct(
   // (satıcı düzenleme formunun geri-doldurması için; her varyant kendi değerini de taşır).
   let multiCompareAtPrice: number | undefined
 
+  // Varyant başına boyut/ağırlık override (verilenleri varyant seviyesine yaz).
+  const dimFields = (v: Partial<VendorVariantInput>) => {
+    const out: Record<string, number> = {}
+    if (v.weight != null && !Number.isNaN(Number(v.weight))) out.weight = Number(v.weight)
+    if (v.length != null && !Number.isNaN(Number(v.length))) out.length = Number(v.length)
+    if (v.width != null && !Number.isNaN(Number(v.width))) out.width = Number(v.width)
+    if (v.height != null && !Number.isNaN(Number(v.height))) out.height = Number(v.height)
+    return out
+  }
+
   if (multi) {
     optionsPayload = validOptions.map((o) => ({ title: o.title.trim(), values: o.values }))
     variantsPayload = (input.variants ?? []).map((v) => {
-      if (v.stock != null) stockByTitle[v.title] = Math.max(0, Math.floor(Number(v.stock)))
+      // Stok verilmese bile 0 seviye aç → manage_inventory varyant her zaman
+      // bir lokasyona bağlı olur (yoksa "no location" hataları + null/0 tutarsızlığı).
+      stockByTitle[v.title] = v.stock != null ? Math.max(0, Math.floor(Number(v.stock))) : 0
       // İndirimsiz fiyat satış fiyatından büyükse varyant metadata'sına yaz.
       const variantMeta: Record<string, unknown> = {}
       if (v.original_price != null && Number(v.original_price) > Number(v.price)) {
@@ -137,6 +157,7 @@ export async function createVendorProduct(
         options: v.options,
         manage_inventory: true,
         prices: [{ amount: Math.round(v.price * 100), currency_code: "try" }],
+        ...dimFields(v),
         ...(Object.keys(variantMeta).length > 0 ? { metadata: variantMeta } : {}),
       }
     })
@@ -152,7 +173,7 @@ export async function createVendorProduct(
         prices: [{ amount: Math.round(Number(input.price) * 100), currency_code: "try" }],
       },
     ]
-    if (input.stock != null) stockByTitle["Standart"] = Math.max(0, Math.floor(Number(input.stock)))
+    stockByTitle["Standart"] = input.stock != null ? Math.max(0, Math.floor(Number(input.stock))) : 0
   }
 
   // Görseller: çoklu galeri öncelikli; yoksa tekil thumbnail'a düş. İlk görsel

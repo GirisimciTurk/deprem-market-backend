@@ -67,6 +67,62 @@ export const authHeader = (token: string) => ({
 })
 
 /**
+ * Var olan bir satıcıya, belirli izinlerle bir ÇALIŞAN (alt-hesap) + giriş kimliği
+ * oluşturur ve /vendors/* uçlarını çağırmak için "seller" bearer token üretir.
+ * RBAC/audit/presence E2E testleri için (davet akışını HTTP'den ayrı tutar).
+ */
+export async function createStaffWithToken(
+  container: any,
+  sellerId: string,
+  opts: {
+    email: string
+    name?: string
+    role?: string
+    permissions: Record<string, "none" | "view" | "full">
+    is_owner?: boolean
+  }
+) {
+  const marketplace: any = container.resolve(MARKETPLACE_MODULE)
+  const auth: any = container.resolve(Modules.AUTH)
+  const config: any = container.resolve(ContainerRegistrationKeys.CONFIG_MODULE)
+
+  const reg = await auth.register("emailpass", {
+    body: { email: opts.email, password: "Test1234!" },
+  })
+  const authIdentityId = reg?.authIdentity?.id
+  if (!authIdentityId) {
+    throw new Error("staff auth.register başarısız: " + JSON.stringify(reg).slice(0, 200))
+  }
+
+  const admin = await marketplace.createSellerAdmins({
+    email: opts.email,
+    first_name: opts.name ?? "Çalışan",
+    seller_id: sellerId,
+    is_owner: opts.is_owner ?? false,
+    role: opts.role ?? "custom",
+    permissions: opts.permissions,
+    status: "active",
+  })
+
+  await auth.updateAuthIdentities({
+    id: authIdentityId,
+    app_metadata: { seller_id: admin.id },
+  })
+
+  const token = generateJwtToken(
+    {
+      actor_id: admin.id,
+      actor_type: "seller",
+      auth_identity_id: authIdentityId,
+      app_metadata: { seller_id: admin.id },
+    },
+    { secret: config.projectConfig.http.jwtSecret, expiresIn: "1h" }
+  )
+
+  return { sellerAdminId: admin.id, authIdentityId, token }
+}
+
+/**
  * Test ortamında bir admin (user) + giriş kimliği oluşturur ve /admin/* uçlarını
  * çağırmak için geçerli bir "user" bearer token üretir. requireAdminRole middleware'i
  * rolü user.metadata'dan okur; metadata yoksa admin sayılır → bu kullanıcı geçer.

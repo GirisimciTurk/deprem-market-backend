@@ -177,6 +177,43 @@ export async function generateProductInfo(input: {
   return { ok: true, data: res.data }
 }
 
+// ─────────────────────────── Görev 4b: İçerik bloğu metni (görsel anlatımı) ───────────────────────────
+
+/**
+ * Ürün sayfasındaki bir İÇERİK BLOĞU (foto + yazı) için, verilen GÖRSELİ (vision) ve
+ * ürün başlığını anlatan akıcı, satış odaklı ama dürüst bir paragraf üretir. Satıcı
+ * "AI ile Doldur" ile çağırır, çıktıyı DÜZENLEYEBİLİR. Uydurma özellik/ölçü eklemez.
+ */
+export async function generateBlockText(input: {
+  title?: string | null
+  brand?: string | null
+  /** Editörün mevcut metni / yönlendirme ipucu (varsa) — üreteceği metne bağlam. */
+  hint?: string | null
+  images?: LlmImage[]
+}): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+  const system =
+    "Sen bir Türkçe e-ticaret içerik editörüsün. Ürün sayfasındaki bir İÇERİK BLOĞU için, " +
+    "verilen GÖRSELİ (varsa) ve ürün başlığını temel alan, satış odaklı ama DÜRÜST, akıcı bir " +
+    "paragraf yaz. Görselde ne görünüyorsa onu ürün bağlamında anlat. Uydurma teknik özellik, " +
+    "ölçü, malzeme veya iddia EKLEME; emin olmadığın detayı yazma. 2-4 cümle, Türkçe, en fazla " +
+    "~480 karakter. SADECE paragraf metnini döndür — başlık, tırnak veya madde işareti EKLEME."
+  const userText =
+    `Ürün başlığı: ${input.title ?? "(belirtilmedi)"}\n` +
+    `Marka: ${input.brand ?? "(yok)"}\n` +
+    (input.hint ? `Editörün notu/ipucu: ${input.hint}\n` : "") +
+    `Bu blok için görseli/ürünü anlatan paragrafı yaz.`
+  const res = await geminiGenerate<string>({
+    system,
+    userText,
+    images: input.images,
+    temperature: 0.5,
+  })
+  if (!res.ok) return { ok: false, error: res.error }
+  const text = (res.data || "").toString().trim()
+  if (!text) return { ok: false, error: "Boş metin" }
+  return { ok: true, text }
+}
+
 // ─────────────────────────── Görev 5: Kategori önerisi (sınıflandırma) ───────────────────────────
 
 /** Satıcının ürünü için MEVCUT listeden önerilen kategori. category_id daima listede. */

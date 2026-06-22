@@ -68,6 +68,32 @@ export function unitDesi(opts: {
   return Math.max(weightKg, vol)
 }
 
+/** Boyut/ağırlık taşıyan ham kayıt (ürün veya varyant). weight=gram, ölçüler=cm. */
+export type DimInput =
+  | { weight?: number | null; length?: number | null; width?: number | null; height?: number | null }
+  | null
+  | undefined
+
+/**
+ * Kargo desisi için efektif boyut/ağırlık: her alanda VARYANT değeri öncelikli,
+ * yoksa ÜRÜN değerine düşülür (variant.X ?? product.X). Varyantlar boyutsuz
+ * doğabildiğinden bu fallback olmadan hacimsel desi 0 kalır. unitDesi'ye hazır şekil döner.
+ */
+export function pickDims(
+  variant: DimInput,
+  product: DimInput
+): { grams: number; lengthCm: number; widthCm: number; heightCm: number } {
+  const v = variant || {}
+  const p = product || {}
+  const f = (a?: number | null, b?: number | null) => Number(a ?? b ?? 0) || 0
+  return {
+    grams: f(v.weight, p.weight),
+    lengthCm: f(v.length, p.length),
+    widthCm: f(v.width, p.width),
+    heightCm: f(v.height, p.height),
+  }
+}
+
 /** Tarife + desi → kargo ücreti (kuruş). */
 export function computeCargoFee(tariff: CargoTariff, desi: number): number {
   const tiers = [...(tariff.tiers || [])].sort((a, b) => a.max_desi - b.max_desi)

@@ -5,6 +5,13 @@ import {
   type MedusaRequest,
   type MedusaResponse,
 } from "@medusajs/framework/http"
+import { resolveSeller } from "./vendors/_lib/resolve-seller"
+import { requiredPermissionFor, can } from "../lib/seller-permissions"
+import {
+  logSellerAction,
+  describeVendorAction,
+  entityIdFromPath,
+} from "../lib/seller-audit"
 
 /**
  * RBAC backend enforcement: 'staff' rolündeki admin kullanıcılarını hassas admin
@@ -68,6 +75,106 @@ function vendorCors(
     res.status(204).end()
     return
   }
+  return next()
+}
+
+// Audit'e YAZILMAYACAK segment/alt-eylemler (gürültü / AI yardımcıları):
+const AUDIT_SKIP_SEGMENTS = new Set([
+  "notifications",
+  "uploads",
+  "generate-listing",
+  "generate-block-text",
+  "suggest-category",
+  "scorecard",
+  "presence", // eşzamanlı çalışma heartbeat'i — ~15 sn'de bir, audit'e yazılmaz
+])
+const AUDIT_SKIP_SUBS = new Set(["draft", "coach"])
+
+/**
+ * Satıcı paneli RBAC + otomatik sistem kaydı (audit). authenticate'ten SONRA çalışır.
+ *  1) Çalışanın oturum bağlamını çözer; askıya alınmışsa (disabled) 403.
+ *  2) İstenen bölüm için izin yetersizse 403 (deny-by-default değil; eşlenmemiş uç serbest).
+ *  3) Başarılı YAZMA isteklerini "kim, ne zaman, ne yaptı" olarak audit'e yazar.
+ */
+async function vendorAccessControl(
+  req: MedusaRequest,
+  res: MedusaResponse,
+  next: MedusaNextFunction
+) {
+  let resolved
+  try {
+    resolved = await resolveSeller(req)
+  } catch (e: any) {
+    try { req.scope.resolve("logger").error(`[vendorAccessControl] çözümleme hatası: ${e?.message}`) } catch {}
+    return res.status(401).json({ message: "Yetkisiz." })
+  }
+  // Seller bağlamı yoksa (ör. henüz satıcısı olmayan kimlik) route kendi 401/404'ünü versin.
+  if (!resolved) return next()
+
+  // Askıya alınmış çalışan giriş yapamaz.
+  if (resolved.admin.status === "disabled") {
+    return res.status(403).json({ message: "Hesabınız askıya alınmış. Mağaza sahibine başvurun." })
+  }
+
+  // Tam yol: middleware /vendors'a mount edildiğinden req.path göreli ("/...")
+  // olur → /vendors önekini içeren originalUrl (yoksa baseUrl+path) kullanılır.
+  const fullPath = req.originalUrl || `${(req as any).baseUrl || ""}${req.path || ""}`
+
+  // İzin kontrolü.
+  const required = requiredPermissionFor(req.method, fullPath)
+  if (required && !can(resolved.admin, required.section, required.level)) {
+    return res.status(403).json({
+      message: "Bu işlem için yetkiniz yok. Mağaza sahibinden izin isteyin.",
+      required,
+    })
+  }
+
+  // Otomatik audit: yalnız mutasyon isteklerini, başarılı yanıtta kaydet.
+  const method = req.method.toUpperCase()
+  const isWrite = !["GET", "HEAD", "OPTIONS"].includes(method)
+  if (isWrite) {
+    const path = fullPath
+    const parts = (path.split("/vendors/")[1] || "").split(/[?#]/)[0].split("/").filter(Boolean)
+    const seg = parts[0] || ""
+    const lastSub = parts[parts.length - 1]
+    const skip = AUDIT_SKIP_SEGMENTS.has(seg) || AUDIT_SKIP_SUBS.has(lastSub)
+    if (!skip) {
+      let captured: any
+      const origJson = res.json.bind(res)
+      ;(res as any).json = (body: any) => {
+        captured = body
+        return origJson(body)
+      }
+      res.on("finish", () => {
+        if (res.statusCode >= 400) return
+        const { action, summary, entityType } = describeVendorAction(method, path)
+        // entity id: yol parametresi → yoksa yanıt gövdesindeki üst düzey id.
+        let entityId = entityIdFromPath(path)
+        if (!entityId && captured && typeof captured === "object") {
+          const firstObj = Object.values(captured).find(
+            (v) => v && typeof v === "object" && (v as any).id
+          ) as any
+          entityId = firstObj?.id ?? captured.id ?? null
+        }
+        void logSellerAction(req.scope, {
+          sellerId: resolved!.seller.id,
+          actor: {
+            adminId: resolved!.admin.id,
+            name: [resolved!.admin.first_name, resolved!.admin.last_name].filter(Boolean).join(" ") || null,
+            email: resolved!.admin.email,
+          },
+          action,
+          summary,
+          entityType,
+          entityId,
+          method,
+          path,
+          status: res.statusCode,
+        })
+      })
+    }
+  }
+
   return next()
 }
 
@@ -241,9 +348,12 @@ export default defineMiddlewares({
       ],
     },
     {
-      // Diğer tüm satıcı uçları giriş yapmış satıcı gerektirir.
+      // Diğer tüm satıcı uçları giriş yapmış satıcı gerektirir + RBAC/audit.
       matcher: "/vendors/*",
-      middlewares: [authenticate("seller", ["bearer", "session"])],
+      middlewares: [
+        authenticate("seller", ["bearer", "session"]),
+        vendorAccessControl,
+      ],
     },
     // RBAC: hassas admin uçları yalnızca 'admin' rolüne açık.
     ...ADMIN_ONLY_MATCHERS.map((matcher) => ({

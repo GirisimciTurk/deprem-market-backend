@@ -1,7 +1,7 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { computeCartCargo, CargoItem } from "../../../lib/cart-cargo"
-import { readCargoTariff } from "../../../lib/cargo-fee"
+import { readCargoTariff, pickDims } from "../../../lib/cargo-fee"
 
 /**
  * GET /store/shipping-quote?cart_id=...
@@ -44,35 +44,47 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   }
 
   const productIds = [...new Set(items.map((i) => i.product_id).filter(Boolean))]
-  const infoByProduct = new Map<string, { s: string | null; f: number | null; w: number }>()
+  // Boyut/ağırlık kaynağı: varyant öncelikli, ÜRÜN seviyesi fallback (pickDims).
+  // Varyantlar boyutsuz doğabildiğinden ürün boyutuna düşmeden hacimsel desi 0 kalırdı (bug).
+  const infoByProduct = new Map<
+    string,
+    { s: string | null; f: number | null; dims: { weight: number; length: number; width: number; height: number } }
+  >()
   if (productIds.length > 0) {
     const { data: products } = await query.graph({
       entity: "product",
-      fields: ["id", "weight", "seller.id", "seller.free_shipping_threshold"],
+      fields: [
+        "id", "weight", "length", "width", "height",
+        "seller.id", "seller.free_shipping_threshold",
+      ],
       filters: { id: productIds },
     })
     for (const p of products as any[]) {
       infoByProduct.set(p.id, {
         s: p.seller?.id ?? null,
         f: p.seller?.free_shipping_threshold ?? null,
-        w: Number(p.weight ?? 0) || 0,
+        dims: {
+          weight: Number(p.weight ?? 0) || 0,
+          length: Number(p.length ?? 0) || 0,
+          width: Number(p.width ?? 0) || 0,
+          height: Number(p.height ?? 0) || 0,
+        },
       })
     }
   }
 
   const cargoItems: CargoItem[] = items.map((it) => {
-    const info = infoByProduct.get(it.product_id) ?? { s: null, f: null, w: 0 }
-    const v = it.variant ?? {}
-    const grams = Number(v.weight ?? info.w ?? 0) || 0
+    const info = infoByProduct.get(it.product_id)
+    const dims = pickDims(it.variant, info?.dims)
     const qty = Math.max(1, Number(it.quantity) || 1)
     const unit = Number(it.unit_price ?? 0) || 0
     return {
-      seller_id: info.s,
-      free_shipping_threshold: info.f,
-      grams,
-      lengthCm: Number(v.length ?? 0) || 0,
-      widthCm: Number(v.width ?? 0) || 0,
-      heightCm: Number(v.height ?? 0) || 0,
+      seller_id: info?.s ?? null,
+      free_shipping_threshold: info?.f ?? null,
+      grams: dims.grams,
+      lengthCm: dims.lengthCm,
+      widthCm: dims.widthCm,
+      heightCm: dims.heightCm,
       quantity: qty,
       line_subtotal: unit * qty,
     }

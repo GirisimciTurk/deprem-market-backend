@@ -2,7 +2,7 @@ import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
 import { MARKETPLACE_MODULE } from "../modules/marketplace"
 import MarketplaceModuleService from "../modules/marketplace/service"
 import { notifySeller } from "./notify"
-import { readCargoTariff, computeCargoFee, unitDesi } from "./cargo-fee"
+import { readCargoTariff, computeCargoFee, unitDesi, pickDims, DimInput } from "./cargo-fee"
 
 /**
  * Bir müşteri siparişini satıcı bazında alt-siparişlere (seller_order) böler ve
@@ -50,11 +50,9 @@ export async function splitOrder(container: any, orderId: string): Promise<numbe
     string,
     { sellerId: string; isHouse: boolean; sellerRate: number; categoryIds: string[] }
   >()
-  // Ürün → ağırlık (gram) + boyut (cm); kargo desi'si için (hacimsel desi).
-  const productDims = new Map<
-    string,
-    { grams: number; lengthCm: number; widthCm: number; heightCm: number }
-  >()
+  // Kargo desi'si için ham boyut/ağırlık (cm + gram). VARYANT boyutu öncelikli,
+  // ürün boyutu fallback (pickDims; müşteri kargo yollarıyla tutarlı). Önce ürün-seviyesi.
+  const productDims = new Map<string, DimInput>()
   if (productIds.length > 0) {
     const { data: products } = await query.graph({
       entity: "product",
@@ -73,14 +71,27 @@ export async function splitOrder(container: any, orderId: string): Promise<numbe
           categoryIds: (p.categories || []).map((c: any) => c.id),
         })
       }
-      productDims.set(p.id, {
-        grams: Number(p.weight ?? 0),
-        lengthCm: Number(p.length ?? 0),
-        widthCm: Number(p.width ?? 0),
-        heightCm: Number(p.height ?? 0),
-      })
+      productDims.set(p.id, { weight: p.weight, length: p.length, width: p.width, height: p.height })
     }
   }
+
+  // Varyant-seviyesi boyut (varsa ürün boyutunu ezer) — farklı bedenler farklı desi.
+  const variantDims = new Map<string, DimInput>()
+  const lineVariantIds = [...new Set(items.map((it) => it.variant_id).filter(Boolean))]
+  if (lineVariantIds.length > 0) {
+    const { data: variants } = await query.graph({
+      entity: "variant",
+      fields: ["id", "weight", "length", "width", "height"],
+      filters: { id: lineVariantIds },
+    })
+    for (const v of variants as any[]) {
+      variantDims.set(v.id, { weight: v.weight, length: v.length, width: v.width, height: v.height })
+    }
+  }
+
+  // Bir kalem için efektif desi boyutu: varyant değeri varsa onu, yoksa ürünü kullan.
+  const dimsForItem = (it: any) =>
+    pickDims(it.variant_id ? variantDims.get(it.variant_id) : null, productDims.get(it.product_id))
 
   // Satıcısı belirsiz kalemler için house.
   const [houseSeller] = await marketplace.listSellers({ is_house: true }, { take: 1 })
@@ -120,8 +131,7 @@ export async function splitOrder(container: any, orderId: string): Promise<numbe
     // desi = max(hacimsel desi [en×boy×yük/3000], ağırlık [kg]); adetle çarpılıp
     // toplanır. Boyut girilmemiş ürünlerde otomatik ağırlığa düşer.
     const totalDesi = g.items.reduce((s, { it }) => {
-      const d = productDims.get(it.product_id)
-      return s + unitDesi(d ?? {}) * num(it.quantity)
+      return s + unitDesi(dimsForItem(it)) * num(it.quantity)
     }, 0)
     const cargo_fee = computeCargoFee(cargoTariff, totalDesi)
     const snapshot = g.items.map(({ it, rate }) => {

@@ -6,6 +6,7 @@ import SellerReview from "./seller-review"
 import ProductQuestion from "./product-question"
 import Conversation from "./conversation"
 import SellerCampaign from "./seller-campaign"
+import SellerAuditLog from "./seller-audit-log"
 
 /**
  * Satıcı (bayi) — pazar yerinde ürün satan iş ortağı.
@@ -53,6 +54,7 @@ const Seller = model.define("seller", {
   questions: model.hasMany(() => ProductQuestion, { mappedBy: "seller" }),
   conversations: model.hasMany(() => Conversation, { mappedBy: "seller" }),
   campaigns: model.hasMany(() => SellerCampaign, { mappedBy: "seller" }),
+  audit_logs: model.hasMany(() => SellerAuditLog, { mappedBy: "seller" }),
 })
 
 export default Seller

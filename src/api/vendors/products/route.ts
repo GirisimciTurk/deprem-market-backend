@@ -82,9 +82,16 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 const variantSchema = z.object({
   title: z.string().min(1),
   price: z.number().positive(),
+  // İndirimsiz / liste fiyatı (varyant bazında üstü çizili gösterim).
+  original_price: z.number().positive().optional().nullable(),
   sku: z.string().optional().nullable(),
   barcode: z.string().optional().nullable(),
   stock: z.number().int().min(0).optional(),
+  // Varyant bazında boyut/ağırlık (OPSİYONEL override; weight=gram, ölçüler=cm).
+  weight: z.number().positive().optional().nullable(),
+  length: z.number().positive().optional().nullable(),
+  width: z.number().positive().optional().nullable(),
+  height: z.number().positive().optional().nullable(),
   options: z.record(z.string(), z.string()),
 })
 

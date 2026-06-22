@@ -33,6 +33,8 @@ export const createSellerStep = createStep(
     const seller = await service.createSellers({ ...input.seller })
     const admin = await service.createSellerAdmins({
       ...input.admin,
+      // İlk satıcı kullanıcısı mağazanın SAHİBİ → her zaman tam yetki + ekip yönetimi.
+      is_owner: true,
       seller_id: seller.id,
     })
     return new StepResponse(

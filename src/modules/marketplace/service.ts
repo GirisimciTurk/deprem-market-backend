@@ -14,6 +14,7 @@ import SellerCampaign from "./models/seller-campaign"
 import CargoTariff from "./models/cargo-tariff"
 import CategoryAttribute from "./models/category-attribute"
 import Brand from "./models/brand"
+import SellerAuditLog from "./models/seller-audit-log"
 
 // Otomatik CRUD: createSellers/... + SellerOrders/SellerReturns/CommissionRules/SellerReviews
 // /SellerContracts/SellerContractAcceptances/ProductQuestions/NotificationItems
@@ -35,6 +36,7 @@ class MarketplaceModuleService extends MedusaService({
   CargoTariff,
   CategoryAttribute,
   Brand,
+  SellerAuditLog,
 }) {
   /**
    * Bir satıcının ortalama puanını (rating_avg) ve onaylı değerlendirme sayısını

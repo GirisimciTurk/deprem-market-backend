@@ -12,7 +12,7 @@ import {
   Logger,
 } from "@medusajs/framework/types"
 import { YurticiKargoClient } from "./client"
-import { DEFAULT_CARGO_TARIFF } from "../../../../lib/cargo-fee"
+import { DEFAULT_CARGO_TARIFF, pickDims } from "../../../../lib/cargo-fee"
 import {
   computeCartCargo,
   CargoItem,
@@ -111,16 +111,17 @@ class YurticiKargoFulfillmentProviderService extends AbstractFulfillmentProvider
       const meta = (it?.metadata?.[LINE_SHIP_META_KEY] ?? {}) as Partial<LineShipMeta>
       const variant = it?.variant ?? {}
       const product = it?.product ?? variant?.product ?? {}
-      const grams = Number(variant.weight ?? product.weight ?? 0) || 0
+      // Boyut/ağırlık: varyant öncelikli, ürün fallback (variant.X ?? product.X).
+      const dims = pickDims(variant, product)
       const qty = Math.max(1, Number(it?.quantity) || 1)
       const unit = Number(it?.unit_price ?? it?.raw_unit_price?.value ?? 0) || 0
       return {
         seller_id: meta.s ?? null,
         free_shipping_threshold: meta.f ?? null,
-        grams,
-        lengthCm: Number(variant.length ?? 0) || 0,
-        widthCm: Number(variant.width ?? 0) || 0,
-        heightCm: Number(variant.height ?? 0) || 0,
+        grams: dims.grams,
+        lengthCm: dims.lengthCm,
+        widthCm: dims.widthCm,
+        heightCm: dims.heightCm,
         quantity: qty,
         line_subtotal: unit * qty,
       }

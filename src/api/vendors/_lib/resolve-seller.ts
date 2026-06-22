@@ -3,6 +3,17 @@ import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 
 export type ResolvedSeller = {
   sellerAdminId: string
+  // Giriş yapan satıcı kullanıcısının yetki bağlamı (RBAC + audit için).
+  admin: {
+    id: string
+    first_name: string | null
+    last_name: string | null
+    email: string | null
+    is_owner: boolean
+    role: string | null
+    permissions: Record<string, "none" | "view" | "full"> | null
+    status: "active" | "disabled"
+  }
   seller: {
     id: string
     name: string
@@ -28,6 +39,13 @@ export async function resolveSeller(req: MedusaRequest): Promise<ResolvedSeller 
     entity: "seller_admin",
     fields: [
       "id",
+      "first_name",
+      "last_name",
+      "email",
+      "is_owner",
+      "role",
+      "permissions",
+      "status",
       "seller.id",
       "seller.name",
       "seller.legal_name",
@@ -52,5 +70,18 @@ export async function resolveSeller(req: MedusaRequest): Promise<ResolvedSeller 
   const sellerAdmin = data?.[0] as any
   if (!sellerAdmin?.seller?.id) return null
 
-  return { sellerAdminId: sellerAdmin.id, seller: sellerAdmin.seller }
+  return {
+    sellerAdminId: sellerAdmin.id,
+    admin: {
+      id: sellerAdmin.id,
+      first_name: sellerAdmin.first_name ?? null,
+      last_name: sellerAdmin.last_name ?? null,
+      email: sellerAdmin.email ?? null,
+      is_owner: !!sellerAdmin.is_owner,
+      role: sellerAdmin.role ?? null,
+      permissions: sellerAdmin.permissions ?? null,
+      status: sellerAdmin.status ?? "active",
+    },
+    seller: sellerAdmin.seller,
+  }
 }
