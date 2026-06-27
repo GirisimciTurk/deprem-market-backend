@@ -95,3 +95,47 @@ export const MEMBERSHIP_LABELS: Record<MembershipTier, string> = {
 export function membershipLabel(key: string): string {
   return MEMBERSHIP_LABELS[key as MembershipTier] ?? "Standart"
 }
+
+/**
+ * Belge–uzmanlık eşleşmesi (Slayt 11): hangi uzmanlık hangi belgeyi zorunlu kılar.
+ * Tek kaynak; storefront kopyası src/lib/expert-config.ts ile EŞ TUTULMALI.
+ */
+export type DocType = "diploma" | "oda" | "yetki" | "lisans" | "diger"
+export const DOC_TYPE_LABELS: Record<DocType, string> = {
+  diploma: "Diploma",
+  oda: "Oda Kaydı (İMO)",
+  yetki: "Yetki Belgesi / Vergi Mükellefiyeti",
+  lisans: "Lisans / Ruhsat",
+  diger: "Diğer Belge",
+}
+
+/** Her uzmanlık için zorunlu belge tipleri. */
+export const SPEC_REQUIRED_DOCS: Record<string, DocType[]> = {
+  // Mühendis (beyin): diploma + İMO oda kaydı; denetim ek ruhsat ister.
+  risk_tespit: ["diploma", "oda"],
+  guclendirme: ["diploma", "oda"],
+  statik_proje: ["diploma", "oda"],
+  zemin_etut: ["diploma", "oda"],
+  yapi_denetim: ["diploma", "oda", "lisans"],
+  kentsel_donusum: ["diploma", "oda"],
+  performans_analizi: ["diploma", "oda"],
+  // Uygulayıcı (eller): yetki belgesi / vergi mükellefiyeti; bazıları ek ruhsat.
+  guclendirme_uygulama: ["yetki"],
+  karbon_fiber: ["yetki"],
+  celik_guclendirme: ["yetki"],
+  temel_perde: ["yetki"],
+  insaat_yapim: ["yetki", "lisans"],
+  zemin_iyilestirme: ["yetki"],
+  yikim_hafriyat: ["yetki", "lisans"],
+  tadilat_onarim: ["yetki"],
+}
+
+/** Seçili uzmanlıkların gerektirdiği belge tiplerinin BİRLEŞİMİ. */
+export function requiredDocsForSpecs(keys: string[]): DocType[] {
+  const set = new Set<DocType>()
+  for (const k of keys) (SPEC_REQUIRED_DOCS[k] || []).forEach((d) => set.add(d))
+  return Array.from(set)
+}
+export function requiredDocLabels(keys: string[]): string[] {
+  return requiredDocsForSpecs(keys).map((d) => DOC_TYPE_LABELS[d])
+}
