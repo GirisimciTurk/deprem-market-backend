@@ -183,6 +183,7 @@ const ADMIN_ONLY_MATCHERS = [
   "/admin/customers*",
   "/admin/reseller-applications*",
   "/admin/expert-leads*",
+  "/admin/expert-requests*",
   "/admin/sellers*",
   "/admin/seller-scorecards*",
   "/admin/seller-campaigns*",

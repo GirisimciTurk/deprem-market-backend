@@ -133,6 +133,8 @@ export const resellerLimiter = new RateLimiter(3, 3600000, "reseller")
 export const expertLeadLimiter = new RateLimiter(3, 3600000, "expert-lead")
 // Uzman belge yükleme: 5 dakikada 12 (kayıt sırasında birkaç belge yüklenebilir)
 export const expertUploadLimiter = new RateLimiter(12, 300000, "expert-upload")
+// Uzmana hizmet talebi bırakma: 10 dakikada 5 (spam talebe karşı)
+export const expertRequestLimiter = new RateLimiter(5, 600000, "expert-request")
 // İade talebi: dakikada 5 (spam iade taleplerine karşı)
 export const returnRequestLimiter = new RateLimiter(5, 60000, "return-request")
 // Google hesap bağlama: dakikada 5

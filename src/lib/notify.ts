@@ -24,6 +24,7 @@ export type NotifyType =
   | "message" // yeni müşteri mesajı (satıcı)
   | "reseller_application" // yeni bayilik başvurusu (admin)
   | "expert_lead" // yeni uzman ön-kayıt / ilgi formu (admin)
+  | "expert_request" // uzman profiline bırakılan hizmet talebi (admin)
   | "havar_request" // yeni HAVAR ön alım/kiralama talebi (admin)
   | "product_approval" // yayın bekleyen ürün (admin)
   | "seller_signup" // yeni satıcı kaydı / onay bekliyor (admin)
