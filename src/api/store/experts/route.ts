@@ -26,6 +26,8 @@ export function toPublic(l: any) {
     // URL paylaşılmaz (gizlilik).
     verified: true,
     document_count: docs.length,
+    membership_tier: l.membership_tier || "none",
+    featured: l.membership_tier === "premium",
     // İletişim — yalnız sağlayıcının açtığı kanallar.
     phone: l.show_phone ? l.phone || "" : "",
     email: l.show_email ? l.email || "" : "",
@@ -79,6 +81,15 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       (l) => Array.isArray(l.specializations) && l.specializations.includes(specialization)
     )
   }
+
+  // Premium (Üst paket) profilleri sayfa içinde öne al; eşitlikte DB sırası
+  // (published_at DESC) korunur (Array.sort kararlıdır). Discovery ölçeğinde
+  // sayfa-içi sıralama yeterli.
+  items = [...items].sort(
+    (a, b) =>
+      (a.membership_tier === "premium" ? 0 : 1) -
+      (b.membership_tier === "premium" ? 0 : 1)
+  )
 
   return res.json({
     experts: items.map(toPublic),

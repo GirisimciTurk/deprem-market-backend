@@ -4,6 +4,7 @@ import { EXPERT_LEAD_MODULE } from "../../../../modules/expert_lead"
 import ExpertLeadModuleService from "../../../../modules/expert_lead/service"
 import {
   PROVIDER_TYPES,
+  MEMBERSHIP_TIERS,
   specializationKeysFor,
 } from "../../../../lib/expert-config"
 
@@ -37,6 +38,7 @@ const updateSchema = z.object({
   documents: z.array(docSchema).max(10).optional(),
   slug: z.string().max(120).optional(),
   is_published: z.boolean().optional(),
+  membership_tier: z.enum(MEMBERSHIP_TIERS as [string, ...string[]]).optional(),
 })
 
 /** Türkçe-duyarlı slug. */
@@ -101,6 +103,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     "status", "notes", "full_name", "title", "email", "phone", "city",
     "district", "provider_type", "experience_years", "imo_member",
     "service_areas", "about", "photo_url", "whatsapp", "show_phone", "show_email",
+    "membership_tier",
   ] as const
   for (const k of direct) {
     if (d[k] !== undefined) update[k] = d[k]

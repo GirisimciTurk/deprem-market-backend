@@ -80,3 +80,18 @@ export const EXPERT_BUDGET_KEYS = EXPERT_BUDGET_TIERS.map((b) => b.key)
 export function budgetLabel(key: string): string {
   return EXPERT_BUDGET_TIERS.find((b) => b.key === key)?.label ?? key
 }
+
+/**
+ * Üyelik paketi (iş modeli: komisyon/escrow YOK, üyelik temelli). Beta'da ödeme
+ * alınmaz; admin manuel atar. premium = dizinde öne çıkar + "Öne Çıkan" rozeti.
+ */
+export type MembershipTier = "none" | "basic" | "premium"
+export const MEMBERSHIP_TIERS: MembershipTier[] = ["none", "basic", "premium"]
+export const MEMBERSHIP_LABELS: Record<MembershipTier, string> = {
+  none: "Standart",
+  basic: "Temel",
+  premium: "Üst",
+}
+export function membershipLabel(key: string): string {
+  return MEMBERSHIP_LABELS[key as MembershipTier] ?? "Standart"
+}

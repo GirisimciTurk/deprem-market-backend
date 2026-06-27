@@ -414,6 +414,26 @@
           "enumItems": [],
           "mappedType": "datetime"
         },
+        "membership_tier": {
+          "name": "membership_tier",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "'none'",
+          "comment": null,
+          "enumItems": [
+            "none",
+            "basic",
+            "premium"
+          ],
+          "mappedType": "enum"
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamptz",
@@ -501,6 +521,15 @@
           "primary": false,
           "unique": false,
           "expression": "CREATE INDEX IF NOT EXISTS \"IDX_expert_lead_is_published\" ON \"expert_lead\" (\"is_published\") WHERE deleted_at IS NULL"
+        },
+        {
+          "keyName": "IDX_expert_lead_membership_tier",
+          "columnNames": [],
+          "composite": false,
+          "constraint": false,
+          "primary": false,
+          "unique": false,
+          "expression": "CREATE INDEX IF NOT EXISTS \"IDX_expert_lead_membership_tier\" ON \"expert_lead\" (\"membership_tier\") WHERE deleted_at IS NULL"
         },
         {
           "keyName": "IDX_expert_lead_deleted_at",

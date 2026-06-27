@@ -44,6 +44,10 @@ const ExpertLead = model.define("expert_lead", {
   // Yayın: admin doğrulayıp yayınlayınca /uzmanlar'da görünür (status=approved + is_published).
   is_published: model.boolean().default(false).index(),
   published_at: model.dateTime().nullable(),
+  // Üyelik paketi (komisyon/escrow YOK, üyelik temelli iş modeli): none = ücretsiz/temel
+  // liste, basic = Temel paket, premium = Üst paket (dizinde öne çıkar + rozet).
+  // Beta'da ödeme yok; admin manuel atar.
+  membership_tier: model.enum(["none", "basic", "premium"]).default("none").index(),
 })
 
 export default ExpertLead
