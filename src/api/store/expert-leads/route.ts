@@ -19,8 +19,19 @@ const schema = z
     title: z.string().optional(),
     email: z.string().email("Geçerli bir e-posta girin"),
     phone: z.string().optional(),
-    city: z.string().optional(),
-    district: z.string().optional(),
+    // Ana konum zorunlu (il + ilçe) — PDF Slayt 9.
+    city: z.string().min(1, "İl zorunlu"),
+    district: z.string().min(1, "İlçe zorunlu"),
+    // Ek hizmet bölgeleri (ana konum hariç). Self-servis kayıtta 'basic' limiti.
+    service_regions: z
+      .array(
+        z.object({
+          city: z.string().min(1).max(80),
+          district: z.string().max(80).optional(),
+        })
+      )
+      .max(3)
+      .optional(),
     specializations: z
       .array(z.enum(EXPERT_SPECIALIZATION_KEYS as [string, ...string[]]))
       .min(1, "En az bir uzmanlık alanı seçin"),
@@ -76,8 +87,9 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     title: d.title ?? "",
     email: d.email,
     phone: d.phone ?? "",
-    city: d.city ?? "",
-    district: d.district ?? "",
+    city: d.city,
+    district: d.district,
+    service_regions: (d.service_regions ?? null) as any,
     specializations: d.specializations as any,
     experience_years: d.experience_years ?? null,
     imo_member: d.imo_member ?? false,

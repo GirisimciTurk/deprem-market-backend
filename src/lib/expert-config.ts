@@ -97,6 +97,20 @@ export function membershipLabel(key: string): string {
 }
 
 /**
+ * Hizmet bölgesi KAPSAMI üyelik paketine bağlı (Slayt 9): paket başına izin
+ * verilen EK hizmet bölgesi sayısı (ana konum hariç). Beta self-servis kayıtta
+ * 'basic' limiti uygulanır; admin paketi yükseltirse daha fazla bölge eklenebilir.
+ */
+export const MEMBERSHIP_REGION_LIMITS: Record<MembershipTier, number> = {
+  none: 1,
+  basic: 3,
+  premium: 10,
+}
+export function regionLimitFor(tier: string): number {
+  return MEMBERSHIP_REGION_LIMITS[tier as MembershipTier] ?? 1
+}
+
+/**
  * Belge–uzmanlık eşleşmesi (Slayt 11): hangi uzmanlık hangi belgeyi zorunlu kılar.
  * Tek kaynak; storefront kopyası src/lib/expert-config.ts ile EŞ TUTULMALI.
  */

@@ -28,6 +28,7 @@ export function toPublic(l: any) {
     experience_years: l.experience_years ?? null,
     imo_member: !!l.imo_member,
     service_areas: l.service_areas || "",
+    service_regions: Array.isArray(l.service_regions) ? l.service_regions : [],
     about: l.about || "",
     photo_url: l.photo_url || "",
     // "Doğrulanmış" rozeti yayınlanmış olmaya bağlı; belge SAYISI bilgi amaçlı,
@@ -64,8 +65,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   if (providerType && ["engineer", "implementer"].includes(providerType)) {
     filters.provider_type = providerType
   }
-  if (city) filters.city = { $ilike: city }
-  if (district) filters.district = { $ilike: district }
+  // city/district DB'de filtrelenmez; ana konum VE ek hizmet bölgeleri (jsonb)
+  // üzerinde bellekte eşlenir (uzman birden fazla bölgeye hizmet verebilir).
   if (q) {
     const like = `%${q}%`
     filters.$or = [
@@ -76,31 +77,45 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   }
 
   const service: ExpertLeadModuleService = req.scope.resolve(EXPERT_LEAD_MODULE)
+  // city/district/specialization bellekte eşlendiğinden, bunlar aktifse geniş bir
+  // pencere çekip bellekte sayfala; aksi halde DB sayfalaması yeterli.
+  const memFilter = !!(city || district || specialization)
   const [leads, count] = await service.listAndCountExpertLeads(filters, {
     order: { published_at: "DESC" },
-    skip: offset,
-    take: limit,
+    skip: memFilter ? 0 : offset,
+    take: memFilter ? 200 : limit,
   })
 
-  // Uzmanlık filtresi JSON dizisi üzerinde — bellekte uygulanır.
+  const norm = (s: any) => String(s || "").toLocaleLowerCase("tr")
+  const locStrings = (l: any) => {
+    const arr: string[] = [l.city, l.district]
+    if (Array.isArray(l.service_regions)) {
+      for (const r of l.service_regions) arr.push(r?.city, r?.district)
+    }
+    return arr.filter(Boolean).map(norm)
+  }
+
   let items = leads as any[]
   if (specialization) {
     // Uzmanlık bazında onay: filtre yalnız DOĞRULANMIŞ uzmanlıkla eşleşir.
     items = items.filter((l) => verifiedSpecsOf(l).includes(specialization))
   }
+  // Konum: ana konum VEYA ek hizmet bölgelerinden biri eşleşmeli.
+  if (city) items = items.filter((l) => locStrings(l).some((s) => s.includes(norm(city))))
+  if (district) items = items.filter((l) => locStrings(l).some((s) => s.includes(norm(district))))
 
-  // Premium (Üst paket) profilleri sayfa içinde öne al; eşitlikte DB sırası
-  // (published_at DESC) korunur (Array.sort kararlıdır). Discovery ölçeğinde
-  // sayfa-içi sıralama yeterli.
+  // Premium (Üst paket) profilleri öne al; eşitlikte published_at DESC korunur (kararlı sort).
   items = [...items].sort(
     (a, b) =>
       (a.membership_tier === "premium" ? 0 : 1) -
       (b.membership_tier === "premium" ? 0 : 1)
   )
 
+  const total = memFilter ? items.length : count
+  const page = memFilter ? items.slice(offset, offset + limit) : items
   return res.json({
-    experts: items.map(toPublic),
-    count: specialization ? items.length : count,
+    experts: page.map(toPublic),
+    count: total,
     offset,
     limit,
   })

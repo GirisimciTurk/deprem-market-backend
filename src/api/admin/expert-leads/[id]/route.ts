@@ -6,7 +6,13 @@ import {
   PROVIDER_TYPES,
   MEMBERSHIP_TIERS,
   specializationKeysFor,
+  regionLimitFor,
 } from "../../../../lib/expert-config"
+
+const regionSchema = z.object({
+  city: z.string().min(1).max(80),
+  district: z.string().max(80).optional(),
+})
 
 const docSchema = z.object({
   type: z.enum(["diploma", "oda", "yetki", "lisans", "diger"]).default("diger"),
@@ -30,6 +36,7 @@ const updateSchema = z.object({
   experience_years: z.coerce.number().int().min(0).max(70).nullable().optional(),
   imo_member: z.boolean().optional(),
   service_areas: z.string().optional(),
+  service_regions: z.array(regionSchema).max(20).optional(),
   // Dizin profili
   about: z.string().max(2000).optional(),
   photo_url: z.string().optional(),
@@ -99,6 +106,17 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     }
   }
 
+  // Hizmet bölgesi kapsamı üyelik paketine bağlı: ek bölge sayısı tier limitini aşamaz.
+  if (d.service_regions) {
+    const tier = (d.membership_tier ?? current.membership_tier ?? "none") as string
+    const limit = regionLimitFor(tier)
+    if (d.service_regions.length > limit) {
+      return res.status(400).json({
+        message: `Bu üyelik paketi en fazla ${limit} ek hizmet bölgesine izin verir.`,
+      })
+    }
+  }
+
   // Doğrulanmış uzmanlıklar, kişinin uzmanlık listesinin ALT KÜMESİ olmalı.
   if (d.verified_specializations) {
     const specs = (d.specializations ??
@@ -121,6 +139,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   for (const k of direct) {
     if (d[k] !== undefined) update[k] = d[k]
   }
+  if (d.service_regions !== undefined) update.service_regions = d.service_regions as any
   if (d.specializations !== undefined) update.specializations = d.specializations as any
   if (d.verified_specializations !== undefined) {
     update.verified_specializations = d.verified_specializations as any
