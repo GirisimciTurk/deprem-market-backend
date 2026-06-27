@@ -176,6 +176,10 @@ module.exports = defineConfig({
     reseller: {
       resolve: "./src/modules/reseller",
     },
+    expert_lead: {
+      // Uzman (inşaat mühendisi) ön-kayıt / ilgi formu — doğrulanmış dizinin tohumu.
+      resolve: "./src/modules/expert_lead",
+    },
     havar: {
       resolve: "./src/modules/havar",
     },
