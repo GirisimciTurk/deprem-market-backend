@@ -29,6 +29,22 @@ const schema = z
     service_areas: z.string().optional(),
     budget_tier: z.enum(EXPERT_BUDGET_KEYS as [string, ...string[]]).optional(),
     message: z.string().optional(),
+    // --- Dizin profili (opsiyonel; admin doğrulayıp yayınlayınca /uzmanlar'da görünür) ---
+    about: z.string().max(2000).optional(),
+    whatsapp: z.string().max(30).optional(),
+    show_phone: z.boolean().optional(),
+    show_email: z.boolean().optional(),
+    // Doğrulama belgeleri — /store/expert-uploads'tan dönen URL'ler.
+    documents: z
+      .array(
+        z.object({
+          type: z.enum(["diploma", "oda", "yetki", "lisans", "diger"]).default("diger"),
+          url: z.string().url(),
+          name: z.string().max(200).optional(),
+        })
+      )
+      .max(5)
+      .optional(),
   })
   // Seçilen uzmanlıklar, rolün (engineer/implementer) kendi listesine ait olmalı.
   .refine(
@@ -68,6 +84,11 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     service_areas: d.service_areas ?? "",
     budget_tier: d.budget_tier ?? "",
     message: d.message ?? "",
+    about: d.about ?? "",
+    whatsapp: d.whatsapp ?? "",
+    show_phone: d.show_phone ?? true,
+    show_email: d.show_email ?? false,
+    documents: (d.documents ?? null) as any,
     status: "new",
   })
 

@@ -267,6 +267,13 @@ export default defineMiddlewares({
       ],
     },
     {
+      // Uzman/uygulayıcı doğrulama belgesi yükleme: base64 (görsel/PDF) gövde
+      // büyük olabileceğinden body limiti yükseltilir.
+      method: ["POST"],
+      matcher: "/store/expert-uploads",
+      bodyParser: { sizeLimit: "75mb" },
+    },
+    {
       // The customer's own reseller application(s) require a logged-in customer.
       method: ["GET"],
       matcher: "/store/reseller-applications/me",
