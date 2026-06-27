@@ -7,6 +7,12 @@ import ExpertLeadModuleService from "../../../modules/expert_lead/service"
  * YALNIZCA güvenli alanlarını döner. İletişim bilgisi sağlayıcının show_* tercihine bağlı;
  * belge URL'leri, iç not, bütçe sinyali ve ham e-posta/telefon ASLA dışarı verilmez.
  */
+/** Doğrulanmış uzmanlıklar (legacy null → tümü doğrulanmış sayılır). */
+export function verifiedSpecsOf(l: any): string[] {
+  if (Array.isArray(l.verified_specializations)) return l.verified_specializations
+  return Array.isArray(l.specializations) ? l.specializations : []
+}
+
 export function toPublic(l: any) {
   const docs = Array.isArray(l.documents) ? l.documents : []
   return {
@@ -17,6 +23,8 @@ export function toPublic(l: any) {
     city: l.city || "",
     district: l.district || "",
     specializations: Array.isArray(l.specializations) ? l.specializations : [],
+    // Uzmanlık bazında onay: yalnız doğrulanmış uzmanlıklar (dizin filtresi bunları kullanır).
+    verified_specializations: verifiedSpecsOf(l),
     experience_years: l.experience_years ?? null,
     imo_member: !!l.imo_member,
     service_areas: l.service_areas || "",
@@ -77,9 +85,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   // Uzmanlık filtresi JSON dizisi üzerinde — bellekte uygulanır.
   let items = leads as any[]
   if (specialization) {
-    items = items.filter(
-      (l) => Array.isArray(l.specializations) && l.specializations.includes(specialization)
-    )
+    // Uzmanlık bazında onay: filtre yalnız DOĞRULANMIŞ uzmanlıkla eşleşir.
+    items = items.filter((l) => verifiedSpecsOf(l).includes(specialization))
   }
 
   // Premium (Üst paket) profilleri sayfa içinde öne al; eşitlikte DB sırası

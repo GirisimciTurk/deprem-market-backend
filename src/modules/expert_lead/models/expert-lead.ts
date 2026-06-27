@@ -21,9 +21,17 @@ const ExpertLead = model.define("expert_lead", {
   district: model.text().default(""), // Ana ilçe
   // Uzmanlık anahtarları (EXPERT_SPECIALIZATIONS) — sabit listeden çoklu seçim.
   specializations: model.json(),
+  // Uzmanlık BAZINDA doğrulama: admin her uzmanlığı ayrı doğrular. Burada yalnız
+  // doğrulanmış uzmanlık anahtarları tutulur (specializations'ın alt kümesi).
+  // Dizinde uzmanlık filtresi yalnız doğrulanmış olanlarla eşleşir. null = legacy
+  // (tümü doğrulanmış sayılır, geriye dönük uyum).
+  verified_specializations: model.json().nullable(),
   experience_years: model.number().nullable(),
   imo_member: model.boolean().default(false), // İMO (oda) üyesi mi
   service_areas: model.text().default(""), // Ek hizmet bölgeleri (serbest metin, opsiyonel)
+  // Çoklu hizmet bölgesi (ana konum dışındaki ek bölgeler): [{ city, district? }].
+  // Kapsam (adet) üyelik paketine bağlı (MEMBERSHIP_REGION_LIMITS).
+  service_regions: model.json().nullable(),
   // Discovery sinyali: "aylık ne kadar öderdin?" (EXPERT_BUDGET_TIERS anahtarı)
   budget_tier: model.text().default(""),
   // Asıl "fikir/beklenti" alanı — platformdan ne bekliyor, neye ihtiyacı var.

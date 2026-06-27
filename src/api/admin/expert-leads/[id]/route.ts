@@ -26,6 +26,7 @@ const updateSchema = z.object({
   district: z.string().optional(),
   provider_type: z.enum(PROVIDER_TYPES as [string, ...string[]]).optional(),
   specializations: z.array(z.string()).optional(),
+  verified_specializations: z.array(z.string()).optional(),
   experience_years: z.coerce.number().int().min(0).max(70).nullable().optional(),
   imo_member: z.boolean().optional(),
   service_areas: z.string().optional(),
@@ -98,6 +99,18 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     }
   }
 
+  // Doğrulanmış uzmanlıklar, kişinin uzmanlık listesinin ALT KÜMESİ olmalı.
+  if (d.verified_specializations) {
+    const specs = (d.specializations ??
+      (current.specializations as unknown as string[]) ??
+      []) as string[]
+    if (!d.verified_specializations.every((s) => specs.includes(s))) {
+      return res
+        .status(400)
+        .json({ message: "Doğrulanan uzmanlık, kişinin uzmanlık listesinde olmalı." })
+    }
+  }
+
   const update: Record<string, unknown> = { id: req.params.id }
   const direct = [
     "status", "notes", "full_name", "title", "email", "phone", "city",
@@ -109,6 +122,9 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     if (d[k] !== undefined) update[k] = d[k]
   }
   if (d.specializations !== undefined) update.specializations = d.specializations as any
+  if (d.verified_specializations !== undefined) {
+    update.verified_specializations = d.verified_specializations as any
+  }
   if (d.documents !== undefined) update.documents = d.documents as any
 
   // Yayınlama mantığı.
@@ -118,6 +134,16 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       // Yayınlamak onaylamayı ima eder.
       if ((d.status ?? current.status) !== "approved") update.status = "approved"
       if (!current.published_at) update.published_at = new Date()
+      // Uzmanlık-bazlı onay seti hiç belirlenmediyse (legacy/ilk yayın), tüm
+      // uzmanlıkları doğrulanmış say (admin sonradan tek tek geri alabilir).
+      if (
+        d.verified_specializations === undefined &&
+        current.verified_specializations == null
+      ) {
+        update.verified_specializations = (d.specializations ??
+          current.specializations ??
+          []) as any
+      }
       // Slug yoksa üret.
       const name = (d.full_name ?? current.full_name) || ""
       const city = (d.city ?? current.city) || ""

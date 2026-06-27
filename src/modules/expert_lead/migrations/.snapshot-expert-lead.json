@@ -153,6 +153,22 @@
           "enumItems": [],
           "mappedType": "json"
         },
+        "verified_specializations": {
+          "name": "verified_specializations",
+          "type": "jsonb",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "json"
+        },
         "experience_years": {
           "name": "experience_years",
           "type": "integer",
@@ -200,6 +216,22 @@
           "comment": null,
           "enumItems": [],
           "mappedType": "text"
+        },
+        "service_regions": {
+          "name": "service_regions",
+          "type": "jsonb",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "json"
         },
         "budget_tier": {
           "name": "budget_tier",
