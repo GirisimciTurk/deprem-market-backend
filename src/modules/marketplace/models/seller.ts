@@ -30,6 +30,9 @@ const Seller = model.define("seller", {
   // Payout için banka hesap sahibi adı
   account_holder: model.text().nullable(),
   is_house: model.boolean().default(false),
+  // Mağazada ÖNE ÇIKMA (PDF Slayt 4 — bayiler için değer): admin işaretler,
+  // storefront "Öne Çıkan Satıcılar" vitrininde + üst sıralarda gösterilir.
+  is_featured: model.boolean().default(false).index(),
   // Satıcının tercih ettiği varsayılan kargo firması (cargo.ts CarrierCode):
   // aras | yurtici | mng | ptt. Kargolarken ön-seçili gelir.
   default_carrier: model.text().nullable(),

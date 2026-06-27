@@ -1161,6 +1161,22 @@
           "enumItems": [],
           "mappedType": "boolean"
         },
+        "is_featured": {
+          "name": "is_featured",
+          "type": "boolean",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "false",
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "boolean"
+        },
         "default_carrier": {
           "name": "default_carrier",
           "type": "text",
@@ -1294,6 +1310,15 @@
           "primary": false,
           "unique": false,
           "expression": "CREATE INDEX IF NOT EXISTS \"IDX_seller_status\" ON \"seller\" (\"status\") WHERE deleted_at IS NULL"
+        },
+        {
+          "keyName": "IDX_seller_is_featured",
+          "columnNames": [],
+          "composite": false,
+          "constraint": false,
+          "primary": false,
+          "unique": false,
+          "expression": "CREATE INDEX IF NOT EXISTS \"IDX_seller_is_featured\" ON \"seller\" (\"is_featured\") WHERE deleted_at IS NULL"
         },
         {
           "keyName": "IDX_seller_deleted_at",

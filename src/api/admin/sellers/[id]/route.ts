@@ -18,6 +18,7 @@ const updateSchema = z.object({
   default_carrier: z.enum(["yurtici", "mng", "ptt"]).optional().nullable(),
   commission_rate: z.number().min(0).max(100).optional(),
   status: z.enum(["pending", "active", "suspended"]).optional(),
+  is_featured: z.boolean().optional(),
 })
 
 const sumField = (arr: any[], k: string) => arr.reduce((s, x) => s + Number(x[k] ?? 0), 0)
