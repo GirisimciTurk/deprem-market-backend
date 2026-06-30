@@ -11,7 +11,7 @@ import SellerAuditLog from "./seller-audit-log"
 /**
  * Satıcı (bayi) — pazar yerinde ürün satan iş ortağı.
  * status: pending (başvuru/onay bekliyor) → active (satış yapabilir) → suspended (askıya alındı).
- * is_house: birinci-parti "Deprem Market" satıcısı (komisyonsuz, mevcut ürünlerin sahibi).
+ * is_house: birinci-parti "depremTek Market" satıcısı (komisyonsuz, mevcut ürünlerin sahibi).
  */
 const Seller = model.define("seller", {
   id: model.id().primaryKey(),

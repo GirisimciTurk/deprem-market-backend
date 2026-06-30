@@ -77,7 +77,7 @@ export default async function initial_data_seed({
     input: {
       stores: [
         {
-          name: "EKYP Deprem Market",
+          name: "depremTek Market",
           supported_currencies: [
             {
               currency_code: "try",
@@ -182,7 +182,7 @@ export default async function initial_data_seed({
     input: {
       locations: [
         {
-          name: "EKYP Türkiye Deposu",
+          name: "Türkiye Deposu",
           address: {
             city: "İstanbul",
             country_code: "TR",
@@ -212,7 +212,7 @@ export default async function initial_data_seed({
   const shippingProfile = shippingProfileResult[0];
 
   const fulfillmentSet = await fulfillmentModuleService.createFulfillmentSets({
-    name: "EKYP Türkiye Deposu Teslimat",
+    name: "Türkiye Deposu Teslimat",
     type: "shipping",
     service_zones: [
       {

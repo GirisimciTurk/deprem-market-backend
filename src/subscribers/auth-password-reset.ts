@@ -36,10 +36,10 @@ export default async function passwordResetHandler({
 
   const accent = isAdmin ? "#6366f1" : "#ea580c"
   const heading = isAdmin
-    ? "Deprem Market Yönetim Paneli için bir şifre sıfırlama talebi aldık."
+    ? "depremTek Market Yönetim Paneli için bir şifre sıfırlama talebi aldık."
     : isSeller
     ? "Satıcı paneli hesabınız için şifrenizi belirleyebilir veya sıfırlayabilirsiniz."
-    : "EKYP Deprem Market hesabınız için bir şifre sıfırlama talebi aldık."
+    : "depremTek Market hesabınız için bir şifre sıfırlama talebi aldık."
 
   const emailHtml = `
     <div style="font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px; background: #f8fafc;">
@@ -76,7 +76,7 @@ export default async function passwordResetHandler({
       ? "Şifre Sıfırlama — Yönetim Paneli"
       : isSeller
       ? "Satıcı Paneli — Şifrenizi Belirleyin"
-      : "Şifre Sıfırlama — EKYP Deprem Market",
+      : "Şifre Sıfırlama — depremTek Market",
     html: emailHtml,
   })
   if (result.ok) {

@@ -115,7 +115,7 @@ export default async function orderPlacedHandler({
     <html>
       <head>
         <meta charset="utf-8">
-        <title>Siparişiniz Alındı - EKYP Deprem Market</title>
+        <title>Siparişiniz Alındı - depremTek Market</title>
       </head>
       <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc; margin: 0; padding: 0; color: #1e293b;">
         <table align="center" border="0" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; margin: 40px auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
@@ -123,7 +123,7 @@ export default async function orderPlacedHandler({
           <tr>
             <td style="background-color: #0f172a; padding: 30px; text-align: center; border-bottom: 4px solid #e11d48;">
               <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase;">
-                EKYP DEPREM MARKET
+                DEPREMTEK MARKET
               </h1>
               <p style="color: #94a3b8; margin: 5px 0 0 0; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">
                 Acil Durum & Afet Hazırlık Mağazası
@@ -187,7 +187,7 @@ export default async function orderPlacedHandler({
           <!-- Footer -->
           <tr>
             <td style="background-color: #f8fafc; padding: 25px 30px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 12px; color: #94a3b8; line-height: 18px;">
-              Bu e-posta <strong>DEV YAPIMCILIK YAYINCILIK SAN. TİC. LTD. ŞTİ.</strong> iştiraki olan EKYP Deprem Market tarafından otomatik olarak gönderilmiştir.<br>
+              Bu e-posta <strong>DEV YAPIMCILIK YAYINCILIK SAN. TİC. LTD. ŞTİ.</strong> iştiraki olan depremTek Market tarafından otomatik olarak gönderilmiştir.<br>
               Karşıyaka Mah. 612 Cad. No:50, Gölbaşı/Ankara | bilgi@girisimciturk.com
             </td>
           </tr>

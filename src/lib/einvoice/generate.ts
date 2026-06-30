@@ -107,7 +107,7 @@ export async function generateInvoicesForOrder(container: any, orderId: string):
         kdvRate: rate,
         currency: so.currency_code || "try",
         issueDate: new Date(),
-        draftNumber: `EKYP-S-${so.display_id || "X"}-${so.seller_id.slice(-5)}`,
+        draftNumber: `DTM-S-${so.display_id || "X"}-${so.seller_id.slice(-5)}`,
       })
       // tax_rate kolonu (admin/satıcı panelinde "KDV %X" gösterimi): tek orandaysa
       // o oran; karışıksa HARMANLANMIŞ efektif oran (tax_total/net_total) — böylece
@@ -163,7 +163,7 @@ export async function generateInvoicesForOrder(container: any, orderId: string):
         kdvRate: rate,
         currency: so.currency_code || "try",
         issueDate: new Date(),
-        draftNumber: `EKYP-K-${so.display_id || "X"}-${so.seller_id.slice(-5)}`,
+        draftNumber: `DTM-K-${so.display_id || "X"}-${so.seller_id.slice(-5)}`,
       })
       toCreate.push({
         type: "commission",

@@ -17,7 +17,7 @@ export type MarketplaceSetupResult = {
 
 /**
  * Pazar yeri başlangıç kurulumu (idempotent):
- *  1. Birinci-parti "Deprem Market" satıcısını (is_house, komisyon %0, aktif) oluşturur.
+ *  1. Birinci-parti "depremTek Market" satıcısını (is_house, komisyon %0, aktif) oluşturur.
  *  2. Satıcısı olmayan tüm mevcut ürünleri bu house satıcıya bağlar.
  *  3. Geçmiş siparişleri satıcı alt-siparişlerine (seller_order) böler.
  *
@@ -37,8 +37,8 @@ export async function runMarketplaceSetup(container: any): Promise<MarketplaceSe
   if (!house) {
     house = await marketplace.createSellers({
       handle: HOUSE_HANDLE,
-      name: "Deprem Market",
-      legal_name: "Deprem Market",
+      name: "depremTek Market",
+      legal_name: "depremTek Market",
       status: "active",
       commission_rate: 0,
       is_house: true,

@@ -459,7 +459,7 @@ const StorefrontSettingsPage = () => {
 
                 {/* Simulated Store Hero */}
                 <div className="bg-slate-100 border border-slate-200 rounded-lg p-4 text-center mt-3 shadow-sm">
-                  <div className="text-xs font-bold text-slate-900">EKYP Afet Hazırlık Seti</div>
+                  <div className="text-xs font-bold text-slate-900">Afet Hazırlık Seti</div>
                   <div className="text-[10px] text-slate-500 mt-1">Acil durum çantanızı bugünden hazırlayın.</div>
                   <div className="mt-3 inline-block bg-slate-900 text-white text-[10px] px-3 py-1.5 rounded font-bold shadow-sm">
                     Ürünleri İncele

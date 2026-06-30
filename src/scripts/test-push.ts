@@ -21,7 +21,7 @@ export default async function testPush({ container }: ExecArgs) {
   logger.info(`[test-push] Gönderim öncesi abonelik sayısı: ${before.length}`)
 
   const result = await broadcast(container, {
-    title: "Deprem Market — Test",
+    title: "depremTek Market — Test",
     body: "Bu bir web push test bildirimidir. ✅",
     url: "/tr",
     tag: "test",

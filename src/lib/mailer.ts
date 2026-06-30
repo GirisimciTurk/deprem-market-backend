@@ -1,6 +1,6 @@
 import nodemailer, { type Transporter } from "nodemailer"
 
-const FROM_NAME = "EKYP Deprem Market"
+const FROM_NAME = "depremTek Market"
 
 // Süreç-genelinde TEK pooled transporter. Her mailde yeni TCP/TLS el sıkışması yerine
 // bağlantılar yeniden kullanılır (ölçekte SMTP'ye yük + gecikme azalır).

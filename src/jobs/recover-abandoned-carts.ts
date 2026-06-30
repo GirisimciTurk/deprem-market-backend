@@ -34,7 +34,7 @@ function recoveryEmail(p: {
   <body style="font-family:'Segoe UI',Tahoma,sans-serif;background:#f8fafc;margin:0;padding:0;color:#1e293b;">
     <table align="center" width="600" cellpadding="0" cellspacing="0" style="background:#fff;margin:40px auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
       <tr><td style="background:#0f172a;padding:26px 30px;text-align:center;border-bottom:4px solid #e11d48;">
-        <h1 style="color:#fff;margin:0;font-size:22px;font-weight:800;text-transform:uppercase;">EKYP DEPREM MARKET</h1>
+        <h1 style="color:#fff;margin:0;font-size:22px;font-weight:800;text-transform:uppercase;">DEPREMTEK MARKET</h1>
       </td></tr>
       <tr><td style="padding:34px 30px;">
         <h2 style="font-size:20px;margin:0 0 10px;color:#0f172a;">Sepetinizi unutmuş olabilir misiniz? 🛒</h2>
@@ -55,7 +55,7 @@ function recoveryEmail(p: {
         </div>
       </td></tr>
       <tr><td style="background:#f8fafc;padding:22px 30px;border-top:1px solid #e2e8f0;text-align:center;font-size:12px;color:#94a3b8;">
-        Bu e-posta EKYP Deprem Market tarafından otomatik gönderilmiştir.
+        Bu e-posta depremTek Market tarafından otomatik gönderilmiştir.
       </td></tr>
     </table>
   </body></html>`
