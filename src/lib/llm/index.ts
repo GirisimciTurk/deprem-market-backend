@@ -653,8 +653,13 @@ export async function assistAgent(input: {
     type: "object",
     properties: {
       reply: { type: "string" },
-      navigate_path: { type: "string", enum: ["", ...navPaths] },
-      open_product_id: { type: "string", enum: ["", ...ids] },
+      // navigate_path/open_product_id boş ("" = yönlendirme/ürün yok) olabildiği için
+      // enum KULLANILMAZ: Gemini 3.x, enum içinde boş string'i reddediyor
+      // ("enum[0]: cannot be empty" → HTTP 400, asistan komple çöküyordu).
+      // İzinli değerler sistem prompt'unda verilir + aşağıda sunucu tarafında
+      // doğrulanır (navPaths/ids dışındaki değer "" yapılır), bu yüzden güvenli.
+      navigate_path: { type: "string" },
+      open_product_id: { type: "string" },
       products: {
         type: "array",
         items: {
