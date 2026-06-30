@@ -1,3 +1,4 @@
+import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { MARKETPLACE_MODULE } from "../../modules/marketplace"
 import MarketplaceModuleService from "../../modules/marketplace/service"
 import { INVOICING_MODULE } from "../../modules/invoicing"
@@ -32,6 +33,30 @@ export async function generateInvoicesForOrder(container: any, orderId: string):
   const rate = cfg.defaultKdvRate
   const toCreate: any[] = []
   const num = (v: any) => Number(v ?? 0)
+
+  // Ürün başına KDV oranı (metadata.vat_rate) → fatura satırı oranı. Tek doğruluk
+  // kaynağı: ürün metadata'sı (native tax rate rule'u da buradan beslenir). Oranı
+  // olmayan ürün config default'una (rate) düşer.
+  const query = container.resolve(ContainerRegistrationKeys.QUERY)
+  const allProductIds = [
+    ...new Set(
+      (sellerOrders as any[]).flatMap((so) =>
+        ((so.items || []) as any[]).map((it) => it.product_id).filter(Boolean)
+      )
+    ),
+  ]
+  const vatByProduct = new Map<string, number>()
+  if (allProductIds.length > 0) {
+    const { data: prods } = await query.graph({
+      entity: "product",
+      fields: ["id", "metadata"],
+      filters: { id: allProductIds as string[] },
+    })
+    for (const p of prods as any[]) {
+      const vr = (p.metadata as any)?.vat_rate
+      if (vr != null && !Number.isNaN(Number(vr))) vatByProduct.set(p.id, Number(vr))
+    }
+  }
 
   for (const so of sellerOrders as any[]) {
     const seller = sellerById.get(so.seller_id) as any
@@ -69,12 +94,32 @@ export async function generateInvoicesForOrder(container: any, orderId: string):
           name: it.variant_title ? `${it.title} (${it.variant_title})` : it.title,
           quantity: num(it.quantity),
           grossUnitPrice: num(it.unit_price),
+          // Önce SİPARİŞ-ANI snapshot'ı (it.vat_rate) — fatura sonradan değişen
+          // katalog KDV'sinden etkilenmesin. Yoksa canlı ürün metadata'sı (eski
+          // siparişler), o da yoksa config default'una (opts.kdvRate) düşer.
+          kdvRate:
+            it.vat_rate != null
+              ? Number(it.vat_rate)
+              : it.product_id
+              ? vatByProduct.get(it.product_id)
+              : undefined,
         })),
         kdvRate: rate,
         currency: so.currency_code || "try",
         issueDate: new Date(),
         draftNumber: `EKYP-S-${so.display_id || "X"}-${so.seller_id.slice(-5)}`,
       })
+      // tax_rate kolonu (admin/satıcı panelinde "KDV %X" gösterimi): tek orandaysa
+      // o oran; karışıksa HARMANLANMIŞ efektif oran (tax_total/net_total) — böylece
+      // panellerde "%-1" gibi anlamsız değer çıkmaz. Gerçek per-satır dağılım
+      // built.lines + UBL TaxSubtotals'ta taşınır.
+      const saleRates = [...new Set(built.lines.map((l: any) => l.kdv_rate))]
+      const saleTaxRate =
+        saleRates.length === 1
+          ? saleRates[0]
+          : built.net_total > 0
+          ? Math.round((built.tax_total / built.net_total) * 100)
+          : 0
       toCreate.push({
         type: "sale",
         status: "draft",
@@ -94,7 +139,7 @@ export async function generateInvoicesForOrder(container: any, orderId: string):
         net_total: built.net_total,
         tax_total: built.tax_total,
         grand_total: built.grand_total,
-        tax_rate: rate,
+        tax_rate: saleTaxRate,
         lines: built.lines,
         ubl_payload: built.ubl_payload,
         provider: cfg.provider,

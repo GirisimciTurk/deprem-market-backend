@@ -53,11 +53,14 @@ export async function splitOrder(container: any, orderId: string): Promise<numbe
   // Kargo desi'si için ham boyut/ağırlık (cm + gram). VARYANT boyutu öncelikli,
   // ürün boyutu fallback (pickDims; müşteri kargo yollarıyla tutarlı). Önce ürün-seviyesi.
   const productDims = new Map<string, DimInput>()
+  // Sipariş ANINDAKİ KDV oranı snapshot'ı (e-fatura için): sonradan ürünün KDV'si
+  // değişse bile bu siparişin faturası ödendiği andaki oranı kullansın (immutable).
+  const productVat = new Map<string, number | null>()
   if (productIds.length > 0) {
     const { data: products } = await query.graph({
       entity: "product",
       fields: [
-        "id", "weight", "length", "width", "height",
+        "id", "weight", "length", "width", "height", "metadata",
         "seller.id", "seller.commission_rate", "seller.is_house", "categories.id",
       ],
       filters: { id: productIds },
@@ -72,6 +75,8 @@ export async function splitOrder(container: any, orderId: string): Promise<numbe
         })
       }
       productDims.set(p.id, { weight: p.weight, length: p.length, width: p.width, height: p.height })
+      const vr = (p.metadata as any)?.vat_rate
+      productVat.set(p.id, vr != null && !Number.isNaN(Number(vr)) ? Number(vr) : null)
     }
   }
 
@@ -146,6 +151,9 @@ export async function splitOrder(container: any, orderId: string): Promise<numbe
         commission_rate: rate,
         commission_amount: Math.round((line_total * rate) / 100),
         thumbnail: it.thumbnail,
+        // Sipariş-anı KDV oranı (e-fatura immutability). null → e-fatura canlı
+        // metadata'ya/config default'una düşer (eski siparişler için geriye uyumlu).
+        vat_rate: it.product_id ? productVat.get(it.product_id) ?? null : null,
       }
     })
     const subtotal = snapshot.reduce((s, x) => s + x.line_total, 0)

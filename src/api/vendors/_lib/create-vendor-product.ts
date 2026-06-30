@@ -5,6 +5,8 @@ import {
 } from "@medusajs/medusa/core-flows"
 import { MARKETPLACE_MODULE } from "../../../modules/marketplace"
 import { buildAttributeSpecs } from "../../../lib/category-attributes"
+// KDV→native tax senkronu product.created/updated subscriber'ında (product-tax-sync)
+// merkezi yapılır → tüm yazma yolları (create/tek-edit/bulk/native admin) kapsanır.
 
 function slugify(input: string): string {
   const map: Record<string, string> = { ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u" }

@@ -3,6 +3,7 @@ import {
   updateProductsWorkflow,
   updateProductVariantsWorkflow,
 } from "@medusajs/medusa/core-flows"
+// KDV→native tax senkronu product.updated subscriber'ında (product-tax-sync) merkezi yapılır.
 
 /** Toplu yüklemede SKU eşleşince güncellenecek mevcut ürünün çözülmüş kimlikleri. */
 export type UpdateTarget = {
