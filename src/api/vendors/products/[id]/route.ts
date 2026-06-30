@@ -100,6 +100,10 @@ const updateSchema = z.object({
   attributes: z.record(z.string(), z.any()).optional().nullable(),
   vat_rate: z.number().min(0).max(100).optional().nullable(),
   delivery_days: z.coerce.number().int().min(0).max(60).optional().nullable(),
+  // Hizmet verilebilir ürün (yerinde montaj/uygulama) → metadata.is_serviceable.
+  is_serviceable: z.boolean().optional().nullable(),
+  service_kind: z.string().optional().nullable(),
+  service_description: z.string().max(500).optional().nullable(),
   price: z.number().positive().optional(),
   // İndirimsiz / liste fiyatı → metadata.compare_at_price (boş/0 ⇒ kaldırılır).
   original_price: z.number().nonnegative().optional().nullable(),
@@ -226,6 +230,21 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   if (data.delivery_days !== undefined) {
     if (data.delivery_days != null) metadata.delivery_days = data.delivery_days
     else delete metadata.delivery_days
+    metaChanged = true
+  }
+  // Hizmet verilebilir ürün: işaretliyse yaz, kaldırıldıysa metadata'dan sil.
+  if (data.is_serviceable !== undefined) {
+    if (data.is_serviceable) {
+      metadata.is_serviceable = true
+      metadata.service_kind = data.service_kind || "other"
+      const sd = (data.service_description || "").trim()
+      if (sd) metadata.service_description = sd
+      else delete metadata.service_description
+    } else {
+      delete metadata.is_serviceable
+      delete metadata.service_kind
+      delete metadata.service_description
+    }
     metaChanged = true
   }
   if (metaChanged) update.metadata = metadata

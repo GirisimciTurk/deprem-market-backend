@@ -49,6 +49,40 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     return res.json({ service_request: after })
   }
 
+  // Havuz/teklif akışında KAZANAN teklifi seç: seçilen bayinin verdiği fiyat müşteriye
+  // teklif olarak gönderilir (status → teklif_gonderildi). Bayi atanır + komisyon snapshot.
+  if (body.action === "select_bid") {
+    const sellerId = String(body.seller_id || "")
+    if (!sellerId) return res.status(400).json({ message: "Bayi seçilmedi." })
+    const bids: any[] = Array.isArray((r as any).bids) ? (r as any).bids : []
+    const bid = bids.find((b) => b.seller_id === sellerId)
+    if (!bid) return res.status(400).json({ message: "Bu bayinin teklifi bulunamadı." })
+    const price = body.price != null ? Number(body.price) : Number(bid.price)
+    if (!price || price <= 0) {
+      return res.status(400).json({ message: "Geçersiz teklif tutarı." })
+    }
+    await svc.updateServiceRequests({
+      id: r.id,
+      assigned_seller_id: sellerId,
+      offer_items: [
+        {
+          label: (r as any).service_title || "Hizmet",
+          qty: 1,
+          unit_price: price,
+          total: price,
+        },
+      ],
+      offer_total: price,
+      offer_sent_at: new Date(),
+      offer_decision: "pending",
+      status: "teklif_gonderildi",
+    } as any)
+    // Komisyon oranını seçilen bayiden snapshot'la (is_house → 0).
+    await snapshotCommissionRate(req.scope, r.id, sellerId).catch(() => {})
+    const after = await svc.retrieveServiceRequest(r.id)
+    return res.json({ service_request: after })
+  }
+
   // Manuel tahsilat kaydı (PayTR yoksa / havale-EFT ile gelmiş ödeme). Admin
   // override olduğu için müşteri kapısı uygulanmaz; tutar verilmezse faz tutarı.
   if (body.action === "record_payment") {

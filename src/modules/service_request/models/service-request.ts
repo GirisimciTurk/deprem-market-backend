@@ -36,6 +36,13 @@ const ServiceRequest = model.define("service_request", {
     .index(),
   requires_survey: model.boolean().default(true),
 
+  // ───── Değerlendirme yöntemi (Ürün + Hizmet akışı) ─────
+  // "Ürün + Hizmet" alınınca talep assessment_mode="pending" ile havuza düşer.
+  // Müşteri hesabından ya "media" (foto/video yükler → bayiler uzaktan teklif verir)
+  // ya da "survey" (yerinde keşif) seçer. media: yüklenen dosya URL'leri.
+  assessment_mode: model.enum(["pending", "media", "survey"]).default("pending").index(),
+  media: model.json().nullable(), // [{ url, type: "image" | "video" }]
+
   // ───── Müşteri ─────
   customer_id: model.text().index().nullable(), // giriş yapmışsa
   full_name: model.text(),
@@ -53,6 +60,15 @@ const ServiceRequest = model.define("service_request", {
   assigned_seller_id: model.text().index().nullable(),
   // Otomatik atamada reddeden bayilerin id'leri (tekrar atanmasın diye).
   rejected_seller_ids: model.json().nullable(),
+
+  // ───── Havuz / teklif (bidding) ─────
+  // Hizmet verilebilir ÜRÜNDEN açılan talepler otomatik atanmaz; bir havuza düşer
+  // (is_bidding=true). Tüm aktif bayiler havuzdaki talebi görüp fiyat verir; admin en
+  // düşük teklifi seçer (action=select_bid) → o bayiye atanır ve fiyat müşteriye teklif
+  // olarak gönderilir. Vitrin (showcase) talepleri is_bidding=false → eski otomatik atama.
+  is_bidding: model.boolean().default(false).index(),
+  // Bayi teklifleri: [{ seller_id, price (TAM LİRA), note, created_at }]
+  bids: model.json().nullable(),
 
   // ───── Keşif ─────
   survey_scheduled_at: model.dateTime().nullable(),

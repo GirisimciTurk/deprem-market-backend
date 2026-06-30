@@ -64,6 +64,11 @@ export type VendorProductInput = {
   // --- KDV oranı (%) ve kargoya veriliş (termin) süresi (gün) ---
   vat_rate?: number | null
   delivery_days?: number | null
+  /** Hizmet verilebilir ürün → metadata.is_serviceable (+ service_kind/service_description).
+   *  İşaretliyse storefront'ta "Talep Oluştur" butonu + "Hizmet" rozeti çıkar. */
+  is_serviceable?: boolean | null
+  service_kind?: string | null
+  service_description?: string | null
   // --- Kargo / boyut (ürün-seviyesi varsayılan; weight=GRAM, length/width/height=cm;
   // desi storefront/kargo için. cargo-fee/split-order /1000 ile kg'a çevirir.) ---
   weight?: number | null
@@ -230,6 +235,13 @@ export async function createVendorProduct(
   }
   if (input.delivery_days != null && !Number.isNaN(Number(input.delivery_days))) {
     metadata.delivery_days = Math.max(0, Math.floor(Number(input.delivery_days)))
+  }
+  // Hizmet verilebilir ürün (yerinde montaj/uygulama). İşaretsizse hiç yazılmaz.
+  if (input.is_serviceable) {
+    metadata.is_serviceable = true
+    metadata.service_kind = input.service_kind || "other"
+    const sd = (input.service_description || "").trim()
+    if (sd) metadata.service_description = sd
   }
 
   const { result } = await createProductsWorkflow(scope).run({

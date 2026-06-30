@@ -269,6 +269,38 @@
           "enumItems": [],
           "mappedType": "json"
         },
+        "is_bidding": {
+          "name": "is_bidding",
+          "type": "boolean",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "false",
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "boolean"
+        },
+        "bids": {
+          "name": "bids",
+          "type": "jsonb",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "json"
+        },
         "survey_scheduled_at": {
           "name": "survey_scheduled_at",
           "type": "timestamptz",
@@ -775,6 +807,15 @@
           "primary": false,
           "unique": false,
           "expression": "CREATE INDEX IF NOT EXISTS \"IDX_service_request_assigned_seller_id\" ON \"service_request\" (\"assigned_seller_id\") WHERE deleted_at IS NULL"
+        },
+        {
+          "keyName": "IDX_service_request_is_bidding",
+          "columnNames": [],
+          "composite": false,
+          "constraint": false,
+          "primary": false,
+          "unique": false,
+          "expression": "CREATE INDEX IF NOT EXISTS \"IDX_service_request_is_bidding\" ON \"service_request\" (\"is_bidding\") WHERE deleted_at IS NULL"
         },
         {
           "keyName": "IDX_service_request_payment_status",

@@ -130,6 +130,10 @@ const createSchema = z
     attributes: z.record(z.string(), z.any()).optional().nullable(),
     vat_rate: z.number().min(0).max(100).optional().nullable(),
     delivery_days: z.coerce.number().int().min(0).max(60).optional().nullable(),
+    // Hizmet verilebilir ürün (yerinde montaj/uygulama) → metadata.is_serviceable.
+    is_serviceable: z.boolean().optional().nullable(),
+    service_kind: z.string().optional().nullable(),
+    service_description: z.string().max(500).optional().nullable(),
     // Çok-varyant modu: ikisi de verilirse matris ürünü oluşturulur.
     options: z.array(z.object({ title: z.string().min(1), values: z.array(z.string().min(1)).min(1) })).optional(),
     variants: z.array(variantSchema).optional(),

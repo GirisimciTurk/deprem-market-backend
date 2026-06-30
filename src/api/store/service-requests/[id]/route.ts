@@ -32,14 +32,60 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
   const r = await getOwn(req, customerId)
   if (!r) return res.status(404).json({ message: "Talep bulunamadı." })
 
-  const parsed = z.object({ decision: z.enum(["accept", "reject"]) }).safeParse(req.body)
+  const svc = req.scope.resolve<ServiceRequestModuleService>(SERVICE_REQUEST_MODULE)
+  const body = (req.body ?? {}) as Record<string, unknown>
+
+  // ── (A) Değerlendirme yöntemi belirleme (Ürün + Hizmet sonrası, hesaptan) ──
+  // Müşteri "media" (foto/video) ya da "survey" (yerinde keşif) seçer. Talep havuzda
+  // kalır; bayiler bu bilgiye göre uzaktan/keşifle fiyat verir.
+  if (typeof body.assessment_mode === "string") {
+    const aParsed = z
+      .object({
+        assessment_mode: z.enum(["media", "survey"]),
+        media: z
+          .array(z.object({ url: z.string().url(), type: z.string().optional() }))
+          .max(8)
+          .optional(),
+        preferred_dates: z.array(z.string()).max(3).optional(),
+        city: z.string().optional(),
+        district: z.string().optional(),
+        address: z.string().optional(),
+        note: z.string().optional(),
+      })
+      .safeParse(body)
+    if (!aParsed.success) {
+      return res.status(400).json({ message: "Geçersiz değerlendirme verisi." })
+    }
+    // Yalnız teklif öncesi (erken) aşamada seçilebilir/değiştirilebilir.
+    if (!["talep", "kesif_planlandi"].includes(r.status)) {
+      return res
+        .status(400)
+        .json({ message: "Bu aşamada değerlendirme yöntemi değiştirilemez." })
+    }
+    const d = aParsed.data
+    await svc.updateServiceRequests({
+      id: r.id,
+      assessment_mode: d.assessment_mode,
+      requires_survey: d.assessment_mode === "survey",
+      ...(d.media ? { media: d.media } : {}),
+      ...(d.preferred_dates ? { preferred_dates: d.preferred_dates } : {}),
+      ...(d.city !== undefined ? { city: d.city } : {}),
+      ...(d.district !== undefined ? { district: d.district } : {}),
+      ...(d.address !== undefined ? { address: d.address } : {}),
+      ...(d.note !== undefined ? { note: d.note } : {}),
+    } as any)
+    const updated = await svc.retrieveServiceRequest(r.id)
+    return res.json({ service_request: updated })
+  }
+
+  // ── (B) Teklif kararı (onay/ret) ──
+  const parsed = z.object({ decision: z.enum(["accept", "reject"]) }).safeParse(body)
   if (!parsed.success) return res.status(400).json({ message: "Geçersiz karar." })
 
   if (r.status !== "teklif_gonderildi") {
     return res.status(400).json({ message: "Onaylanacak/reddedilecek bir teklif yok." })
   }
 
-  const svc = req.scope.resolve<ServiceRequestModuleService>(SERVICE_REQUEST_MODULE)
   const accepted = parsed.data.decision === "accept"
   await svc.updateServiceRequests({
     id: r.id,

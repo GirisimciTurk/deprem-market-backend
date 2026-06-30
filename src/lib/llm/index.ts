@@ -599,3 +599,164 @@ export async function generateBlogPost(input: {
   if (!res.ok) return { ok: false, error: res.error }
   return { ok: true, data: res.data }
 }
+
+// ─────────────────────────── Görev 11: Site Asistanı / Maskot "Depremzede" (agent) ───────────────────────────
+
+/** Asistanın önereceği bir ürün (id liste enum'u ile gerçek kataloğa kısıtlı). */
+export type AgentProductRef = { product_id: string; quantity: number; reason: string }
+
+/**
+ * Site Asistanı yanıtı. Storefront bunu UI eylemlerine çevirir:
+ *  - reply: maskotun Türkçe konuşma yanıtı (daima dolu).
+ *  - navigate_path: kullanıcıyı GÖTÜRMEK istediği sayfa (izinli slug listesinden) ya da "".
+ *  - open_product_id: açılacak TEK ürün detay sayfası (id) ya da "".
+ *  - products: sohbette KART olarak gösterilecek ürünler (öneri/set/tek ürün).
+ *  - add_all_to_cart: products bir "set" ve sepete eklenmeye hazır mı.
+ *  - recommend_survey/survey_reason: YAPISAL güvenlik → uzman keşfi (mevcut guardrail).
+ */
+export type AgentResult = {
+  reply: string
+  navigate_path: string
+  open_product_id: string
+  products: AgentProductRef[]
+  add_all_to_cart: boolean
+  recommend_survey: boolean
+  survey_reason: string
+}
+
+export type AgentNavOption = { path: string; label: string }
+export type AgentHistoryTurn = { role: "user" | "assistant"; content: string }
+
+/**
+ * depremTek maskotu "Depremzede" — siteyi süren konuşkan asistan. Kullanıcı mesajını
+ * + kısa geçmişi + bulunduğu sayfayı alır; ya bir sayfaya YÖNLENDİRİR, ya ürün/set
+ * ÖNERİR (sepete hazır), ya bir ürünü AÇAR, ya da güvenlik rehberliği verir.
+ *
+ * Güvenlik sınırları (assistPreparedness ile aynı, hayati): YAPISAL/BİNA güvenliğinde
+ * ASLA kesin hüküm vermez → recommend_survey. product_id ve navigate_path JSON şema
+ * `enum`'ı ile GERÇEK kataloğa/izinli yollara kısıtlı → model olmayan ürün/sayfa
+ * uyduramaz. Dönen değerler ayrıca doğrulanır (fail-closed).
+ */
+export async function assistAgent(input: {
+  message: string
+  history?: AgentHistoryTurn[]
+  currentPath?: string | null
+  products: { id: string; title: string; category: string }[]
+  navOptions: AgentNavOption[]
+}): Promise<{ ok: true; data: AgentResult } | { ok: false; error: string }> {
+  const prods = (input.products ?? []).filter((p) => p?.id && p?.title)
+  if (prods.length === 0) return { ok: false, error: "Ürün listesi boş" }
+  const ids = prods.map((p) => p.id)
+  const navPaths = (input.navOptions ?? []).map((n) => n.path)
+
+  const schema = {
+    type: "object",
+    properties: {
+      reply: { type: "string" },
+      navigate_path: { type: "string", enum: ["", ...navPaths] },
+      open_product_id: { type: "string", enum: ["", ...ids] },
+      products: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            product_id: { type: "string", enum: ids },
+            quantity: { type: "integer" },
+            reason: { type: "string" },
+          },
+          required: ["product_id", "quantity", "reason"],
+        },
+      },
+      add_all_to_cart: { type: "boolean" },
+      recommend_survey: { type: "boolean" },
+      survey_reason: { type: "string" },
+    },
+    required: [
+      "reply",
+      "navigate_path",
+      "open_product_id",
+      "products",
+      "add_all_to_cart",
+      "recommend_survey",
+      "survey_reason",
+    ],
+  } as const
+
+  const system =
+    "Sen depremTek pazaryerinin maskotu ve site asistanı 'Depremzede'sin. Kasketli, sıcak, " +
+    "samimi ama bilgili bir karaktersin; deprem hazırlığı ve afet güvenliği konusunda kullanıcıya " +
+    "yol gösterir, SİTEYİ onun adına SÜRERSİN. Her zaman Türkçe, kısa ve eyleme dönük konuş; " +
+    "1. tekil şahıs ('seni mağazaya götürüyorum', 'şu ürünleri önerdim') kullan.\n" +
+    "Elindeki YETENEKLER (uygun olanı seç, birden çok alanı birlikte kullanabilirsin):\n" +
+    "- YÖNLENDİRME: Kullanıcı bir sayfaya gitmek/bakmak isterse navigate_path'i AŞAĞIDAKİ izinli " +
+    "listeden seç (yalnız oradaki slug'lar geçerli; uydurma). Gerek yoksa \"\" bırak.\n" +
+    "- ÜRÜN/SET ÖNERME: Ürün arıyor ya da hazırlık seti istiyorsa products'a AŞAĞIDAKİ listeden " +
+    "ürün ekle (su, gıda, ışık/enerji, ilk yardım, ısınma, iletişim dengeli; kişi/gün/özel duruma " +
+    "göre makul adet). Bunlar sohbette kart olarak gösterilir. Bir SET öneriyorsan add_all_to_cart=true.\n" +
+    "- TEK ÜRÜN AÇMA: Kullanıcı belirli bir ürünün detayını istiyorsa open_product_id'yi o ürüne ayarla.\n" +
+    "- SADECE listedeki product_id'leri kullan; liste dışı ürün UYDURMA. Uygun ürün yoksa products boş kalsın.\n" +
+    "GÜVENLİK SINIRI (hayati): YAPISAL / BİNA GÜVENLİĞİ (kolon, kiriş, çatlak, bina sağlamlığı, " +
+    "hasar, 'oturulur mu', güçlendirme) konularında ASLA kesin hüküm VERME ('güvenli', 'yıkılır', " +
+    "'oturulmaz' deme). Genel bilgilendirme + kişinin neyi gözlemleyebileceğini + acil/yakın tehlike " +
+    "durumunda ne YAPMAMASI gerektiğini söyle; kesin değerlendirmenin ancak ruhsatlı bir inşaat " +
+    "mühendisinin YERİNDE keşfiyle yapılabileceğini belirt; recommend_survey=true ve survey_reason'a " +
+    "kısa neden yaz. Tıbbi/hukuki/mühendislik KESİN tavsiyesi verme. reply daima dolu ve Türkçe olsun."
+
+  const navList = (input.navOptions ?? []).map((n) => `${n.path || "(ana sayfa)"} → ${n.label}`).join("\n")
+  const prodList = prods.map((p) => `${p.id} | ${p.title}${p.category ? ` [${p.category}]` : ""}`).join("\n")
+  // Geçmiş turlar istemciden gelir → içerik enjeksiyonuna karşı: olası sahte rol
+  // etiketini ("Kullanıcı:"/"Depremzede:") baştan temizle ve içeriği yeni mesaj gibi
+  // üç tırnakla sınırla (tur sınırı taklidini engelle).
+  const stripLabel = (s: string) => s.replace(/^\s*(Kullanıcı|Depremzede)\s*:\s*/i, "")
+  const hist = (input.history ?? [])
+    .slice(-8)
+    .map((m) => `${m.role === "assistant" ? "Depremzede" : "Kullanıcı"}: """${stripLabel(String(m.content ?? ""))}"""`)
+    .join("\n")
+
+  const userText =
+    (hist ? `Önceki konuşma:\n${hist}\n\n` : "") +
+    `Kullanıcının bulunduğu sayfa: ${input.currentPath || "(bilinmiyor)"}\n\n` +
+    `Kullanıcının yeni mesajı: """${input.message}"""\n\n` +
+    `İzinli sayfalar (slug → açıklama):\n${navList}\n\n` +
+    `Ürünler (id | ad [kategori]):\n${prodList}`
+
+  const res = await geminiGenerate<AgentResult>({
+    system,
+    userText,
+    jsonSchema: schema as unknown as Record<string, unknown>,
+    temperature: 0.4,
+  })
+  if (!res.ok) return { ok: false, error: res.error }
+  const d = res.data
+  if (!d || typeof d.reply !== "string" || !d.reply.trim()) {
+    return { ok: false, error: "Geçersiz asistan yanıtı" }
+  }
+
+  // ─ Doğrulama / normalizasyon (fail-closed) ─
+  const navigate_path = navPaths.includes(d.navigate_path) ? d.navigate_path : ""
+  const open_product_id = ids.includes(d.open_product_id) ? d.open_product_id : ""
+  const seen = new Set<string>()
+  const products: AgentProductRef[] = []
+  for (const it of Array.isArray(d.products) ? d.products : []) {
+    if (!it || typeof it.product_id !== "string" || !ids.includes(it.product_id) || seen.has(it.product_id)) continue
+    seen.add(it.product_id)
+    products.push({
+      product_id: it.product_id,
+      quantity: Math.max(1, Math.min(99, Math.round(Number(it.quantity) || 1))),
+      reason: String(it.reason ?? ""),
+    })
+  }
+
+  return {
+    ok: true,
+    data: {
+      reply: d.reply.trim(),
+      navigate_path,
+      open_product_id,
+      products,
+      add_all_to_cart: !!d.add_all_to_cart && products.length > 0,
+      recommend_survey: !!d.recommend_survey,
+      survey_reason: String(d.survey_reason ?? ""),
+    },
+  }
+}
