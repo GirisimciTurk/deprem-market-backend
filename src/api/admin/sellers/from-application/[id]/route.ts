@@ -3,6 +3,7 @@ import { MARKETPLACE_MODULE } from "../../../../../modules/marketplace"
 import MarketplaceModuleService from "../../../../../modules/marketplace/service"
 import { RESELLER_MODULE } from "../../../../../modules/reseller"
 import ResellerModuleService from "../../../../../modules/reseller/service"
+import { inviteSeller } from "../../../../../lib/seller-invite"
 
 function slugify(input: string): string {
   const map: Record<string, string> = { ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u" }
@@ -18,7 +19,10 @@ function slugify(input: string): string {
 
 /**
  * POST /admin/sellers/from-application/:id — onaylanan bayilik başvurusundan
- * satıcı oluşturur ve başvuruyu 'approved' yapar.
+ * satıcı oluşturur, başvuruyu 'approved' yapar VE bayiye panel girişi hazırlayıp
+ * "şifreni belirle" davet e-postası gönderir (inviteSeller: auth hesabı +
+ * seller_admin + reset-token maili). Bu davet olmadan oluşturulan satıcının auth
+ * hesabı olmadığından panele giriş YAPAMIYOR, dolayısıyla dükkanını açamıyordu.
  */
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const reseller: ResellerModuleService = req.scope.resolve(RESELLER_MODULE)
@@ -39,5 +43,15 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
   await reseller.updateResellerApplications({ id: app.id, status: "approved" })
 
-  return res.status(201).json({ seller })
+  // Panel girişi + şifre-belirleme daveti. Satıcı zaten oluştu; davet başarısız
+  // olsa bile (ör. e-posta yok) 201 dönüyoruz, ama sonucu yanıta koyuyoruz ki
+  // admin durumu görsün / reset_link'i (SMTP kapalıyken) elle iletebilsin.
+  const invite = await inviteSeller(req.scope, seller.id)
+
+  return res.status(201).json({
+    seller,
+    invite: invite.ok
+      ? { sent: true, email: invite.email, reset_link: invite.reset_link }
+      : { sent: false, reason: invite.reason, message: invite.message },
+  })
 }
