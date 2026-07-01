@@ -13,6 +13,8 @@ const schema = z.object({
   city: z.string().optional(),
   tax_number: z.string().optional(),
   message: z.string().optional(),
+  // "bayi" (bayilik) | "firma" (kurumsal iş ortaklığı). Gönderilmezse bayi sayılır.
+  application_type: z.enum(["bayi", "firma"]).optional(),
 })
 
 /** POST /store/reseller-applications — herkese açık bayilik başvurusu. */
@@ -24,9 +26,12 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     return res.status(400).json({ message: "Geçersiz başvuru.", issues: parsed.error.issues })
   }
   const d = parsed.data
+  const appType = d.application_type ?? "bayi"
+  const isFirma = appType === "firma"
   const reseller: ResellerModuleService = req.scope.resolve(RESELLER_MODULE)
 
   const application = await reseller.createResellerApplications({
+    application_type: appType,
     company_name: d.company_name,
     applicant_name: d.applicant_name ?? "",
     email: d.email,
@@ -39,9 +44,9 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
   await notifyAdmins(req.scope, {
     type: "reseller_application",
-    title: "Yeni bayilik başvurusu",
+    title: isFirma ? "Yeni firma başvurusu" : "Yeni bayilik başvurusu",
     body: `${d.company_name}${d.city ? ` — ${d.city}` : ""}`,
-    link: "/resellers",
+    link: isFirma ? "/resellers?type=firma" : "/resellers",
   })
 
   return res.status(201).json({ application: { id: application.id, status: application.status } })

@@ -7,6 +7,9 @@ import { model } from "@medusajs/framework/utils"
  */
 const ResellerApplication = model.define("reseller_application", {
   id: model.id().primaryKey(),
+  // Başvuru türü: "bayi" (ürün satan bayilik) veya "firma" (kurumsal iş ortaklığı,
+  // /firma-ol). Admin panelinde ayrıştırma/filtreleme için kullanılır.
+  application_type: model.enum(["bayi", "firma"]).default("bayi").index(),
   company_name: model.text(),
   applicant_name: model.text().default(""),
   email: model.text().index(),

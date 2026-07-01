@@ -42,6 +42,38 @@ const COPY: Record<ResellerMailStatus, StatusCopy> = {
   },
 }
 
+// Firma (kurumsal iş ortaklığı) başvuruları için ayrı metinler. Bayilik metinleri
+// satıcı paneli/ürün satışına atıfta bulunur; firma için bunlar uygun düşmez.
+const FIRMA_COPY: Record<ResellerMailStatus, StatusCopy> = {
+  approved: {
+    subject: "Firma İş Ortaklığı Başvurunuz Onaylandı 🎉",
+    heading: "Firma İş Ortaklığı Başvurunuz Onaylandı!",
+    emoji: "🎉",
+    intro:
+      "Firma iş ortaklığı başvurunuz değerlendirilmiş ve ONAYLANMIŞTIR. Aramıza hoş geldiniz! İş birliğinin kapsamı ve sonraki adımlar için kurumsal ekibimiz en kısa sürede sizinle iletişime geçecektir.",
+    accent: "#16a34a",
+    filePrefix: "firma-approved",
+  },
+  rejected: {
+    subject: "Firma İş Ortaklığı Başvurunuz Hakkında",
+    heading: "Firma İş Ortaklığı Başvurunuz Değerlendirildi",
+    emoji: "📋",
+    intro:
+      "Firma iş ortaklığı başvurunuz ekibimiz tarafından dikkatle incelenmiştir. Maalesef başvurunuz şu an için olumlu sonuçlanmamıştır. İlginiz için teşekkür eder, koşulların uygun olması halinde tekrar değerlendirmekten memnuniyet duyarız.",
+    accent: "#dc2626",
+    filePrefix: "firma-rejected",
+  },
+  suspended: {
+    subject: "Firma İş Ortaklığınız Askıya Alındı",
+    heading: "Firma İş Ortaklığınız Askıya Alındı",
+    emoji: "⏸️",
+    intro:
+      "Firma iş ortaklığınız geçici olarak askıya alınmıştır. Detaylı bilgi ve yeniden aktifleştirme için lütfen kurumsal ekibimizle iletişime geçin.",
+    accent: "#d97706",
+    filePrefix: "firma-suspended",
+  },
+}
+
 /**
  * Bayilik başvurusunun durumu değiştiğinde (onay/red/askıya alma) başvuru
  * sahibine sonuç e-postası gönderir. SMTP tanımlı değilse `sent-emails/` altına
@@ -55,6 +87,7 @@ export async function sendResellerStatusEmail(
     email?: string | null
     company_name?: string | null
     applicant_name?: string | null
+    application_type?: "bayi" | "firma" | null
   },
   status: ResellerMailStatus
 ): Promise<void> {
@@ -65,7 +98,9 @@ export async function sendResellerStatusEmail(
     return
   }
 
-  const copy = COPY[status]
+  const isFirma = application.application_type === "firma"
+  const subLabel = isFirma ? "Firma Başvurusu" : "Bayilik Başvurusu"
+  const copy = (isFirma ? FIRMA_COPY : COPY)[status]
   const greetingName =
     application.applicant_name?.trim() || application.company_name?.trim() || "Değerli İş Ortağımız"
   const company = application.company_name?.trim()
@@ -79,7 +114,7 @@ export async function sendResellerStatusEmail(
           <tr>
             <td style="background-color: #0f172a; padding: 30px; text-align: center; border-bottom: 4px solid ${copy.accent};">
               <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase;">DEPREMTEK MARKET</h1>
-              <p style="color: #94a3b8; margin: 5px 0 0 0; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Bayilik Başvurusu</p>
+              <p style="color: #94a3b8; margin: 5px 0 0 0; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">${subLabel}</p>
             </td>
           </tr>
           <tr>

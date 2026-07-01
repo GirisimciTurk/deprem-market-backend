@@ -22,6 +22,25 @@
           "enumItems": [],
           "mappedType": "text"
         },
+        "application_type": {
+          "name": "application_type",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "'bayi'",
+          "comment": null,
+          "enumItems": [
+            "bayi",
+            "firma"
+          ],
+          "mappedType": "enum"
+        },
         "company_name": {
           "name": "company_name",
           "type": "text",
@@ -223,6 +242,15 @@
       "name": "reseller_application",
       "schema": "public",
       "indexes": [
+        {
+          "keyName": "IDX_reseller_application_application_type",
+          "columnNames": [],
+          "composite": false,
+          "constraint": false,
+          "primary": false,
+          "unique": false,
+          "expression": "CREATE INDEX IF NOT EXISTS \"IDX_reseller_application_application_type\" ON \"reseller_application\" (\"application_type\") WHERE deleted_at IS NULL"
+        },
         {
           "keyName": "IDX_reseller_application_email",
           "columnNames": [],

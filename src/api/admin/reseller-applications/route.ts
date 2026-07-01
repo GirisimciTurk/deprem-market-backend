@@ -6,6 +6,7 @@ import { validateTaxId } from "../../../lib/tax-id"
 /** GET /admin/reseller-applications?status=&q=&limit=&offset= */
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const status = req.query.status as string | undefined
+  const type = req.query.type as string | undefined
   const q = (req.query.q as string | undefined)?.trim()
   const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100)
   const offset = Math.max(Number(req.query.offset) || 0, 0)
@@ -13,7 +14,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   // Filtreler DB seviyesinde uygulanır — arama da DB'de (ILIKE) yapılır ki sayfa
   // sınırının ötesindeki kayıtlar da bulunabilsin (eski hâl: take:500 + bellekte filter).
   const filters: Record<string, unknown> = {}
-  if (status && ["pending", "approved", "rejected"].includes(status)) filters.status = status
+  if (status && ["pending", "approved", "rejected", "suspended"].includes(status)) filters.status = status
+  if (type && ["bayi", "firma"].includes(type)) filters.application_type = type
   if (q) {
     const like = `%${q}%`
     filters.$or = [

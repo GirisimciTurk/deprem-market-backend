@@ -29,6 +29,16 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const app = await reseller.retrieveResellerApplication(req.params.id).catch(() => null)
   if (!app) return res.status(404).json({ message: "Başvuru bulunamadı." })
 
+  // Firma (kurumsal iş ortaklığı) başvuruları satıcıya dönüştürülmez: bu akış
+  // satıcı hesabı + "dükkanını aç / şifreni belirle" daveti üretir ki firma
+  // başvurularının amacı bu değildir. Sunucu tarafı koruma (UI'dan bağımsız).
+  if ((app as { application_type?: string }).application_type === "firma") {
+    return res.status(400).json({
+      message:
+        "Firma (kurumsal iş ortaklığı) başvurusu satıcıya dönüştürülemez. Bu işlem yalnızca bayilik başvuruları içindir.",
+    })
+  }
+
   const marketplace: MarketplaceModuleService = req.scope.resolve(MARKETPLACE_MODULE)
   const seller = await marketplace.createSellers({
     name: app.company_name,
