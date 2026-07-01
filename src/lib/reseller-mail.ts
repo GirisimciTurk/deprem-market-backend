@@ -12,13 +12,15 @@ type StatusCopy = {
   filePrefix: string
 }
 
+// BAYİLİK (Bayimiz Ol) = hizmet ortağı: hizmet verir, müşteriyi biz buluruz.
+// Ürün satışı/satıcı paneli bayiye ait değildir; metinler hizmet odaklıdır.
 const COPY: Record<ResellerMailStatus, StatusCopy> = {
   approved: {
     subject: "Bayilik Başvurunuz Onaylandı 🎉",
     heading: "Bayilik Başvurunuz Onaylandı!",
     emoji: "🎉",
     intro:
-      "Bayilik başvurunuz değerlendirilmiş ve ONAYLANMIŞTIR. Aramıza hoş geldiniz! Satıcı panelinize giriş yaparak ürünlerinizi eklemeye ve satışa başlayabilirsiniz. Giriş bilgileriniz ve sonraki adımlar için ekibimiz sizinle iletişime geçecektir.",
+      "Bayilik başvurunuz değerlendirilmiş ve ONAYLANMIŞTIR. Aramıza hoş geldiniz! Hizmet ortağımız oldunuz; uygun müşteri taleplerini size yönlendirmeye başlayacağız. Sonraki adımlar için ekibimiz kısa süre içinde sizinle iletişime geçecektir.",
     accent: "#16a34a",
     filePrefix: "reseller-approved",
   },
@@ -36,39 +38,39 @@ const COPY: Record<ResellerMailStatus, StatusCopy> = {
     heading: "Bayilik Hesabınız Askıya Alındı",
     emoji: "⏸️",
     intro:
-      "Bayilik hesabınız geçici olarak askıya alınmıştır. Bu süreçte satış işlemleriniz duraklatılmıştır. Detaylı bilgi ve hesabınızın yeniden aktifleştirilmesi için lütfen bizimle iletişime geçin.",
+      "Bayilik hesabınız geçici olarak askıya alınmıştır. Bu süreçte size yeni müşteri/talep yönlendirmesi yapılmayacaktır. Detaylı bilgi ve hesabınızın yeniden aktifleştirilmesi için lütfen bizimle iletişime geçin.",
     accent: "#d97706",
     filePrefix: "reseller-suspended",
   },
 }
 
-// Firma (kurumsal iş ortaklığı) başvuruları için ayrı metinler. Bayilik metinleri
-// satıcı paneli/ürün satışına atıfta bulunur; firma için bunlar uygun düşmez.
+// FİRMA (Firmamız Ol) = kendi mağazasında ÜRÜN SATAN firma; hizmeti kendi yürütür,
+// biz yalnızca ürün komisyonu alırız. Onayda satıcı paneli/mağaza açılır.
 const FIRMA_COPY: Record<ResellerMailStatus, StatusCopy> = {
   approved: {
-    subject: "Firma İş Ortaklığı Başvurunuz Onaylandı 🎉",
-    heading: "Firma İş Ortaklığı Başvurunuz Onaylandı!",
+    subject: "Firma Başvurunuz Onaylandı 🎉",
+    heading: "Firma Başvurunuz Onaylandı!",
     emoji: "🎉",
     intro:
-      "Firma iş ortaklığı başvurunuz değerlendirilmiş ve ONAYLANMIŞTIR. Aramıza hoş geldiniz! İş birliğinin kapsamı ve sonraki adımlar için kurumsal ekibimiz en kısa sürede sizinle iletişime geçecektir.",
+      "Firma başvurunuz değerlendirilmiş ve ONAYLANMIŞTIR. Aramıza hoş geldiniz! Satıcı panelinize giriş yaparak ürünlerinizi ekleyip mağazanızda satışa başlayabilirsiniz. Giriş bilgileriniz ve sonraki adımlar için ekibimiz sizinle iletişime geçecektir.",
     accent: "#16a34a",
     filePrefix: "firma-approved",
   },
   rejected: {
-    subject: "Firma İş Ortaklığı Başvurunuz Hakkında",
-    heading: "Firma İş Ortaklığı Başvurunuz Değerlendirildi",
+    subject: "Firma Başvurunuz Hakkında",
+    heading: "Firma Başvurunuz Değerlendirildi",
     emoji: "📋",
     intro:
-      "Firma iş ortaklığı başvurunuz ekibimiz tarafından dikkatle incelenmiştir. Maalesef başvurunuz şu an için olumlu sonuçlanmamıştır. İlginiz için teşekkür eder, koşulların uygun olması halinde tekrar değerlendirmekten memnuniyet duyarız.",
+      "Firma başvurunuz ekibimiz tarafından dikkatle incelenmiştir. Maalesef başvurunuz şu an için olumlu sonuçlanmamıştır. İlginiz için teşekkür eder, koşulların uygun olması halinde tekrar başvurabileceğinizi belirtmek isteriz.",
     accent: "#dc2626",
     filePrefix: "firma-rejected",
   },
   suspended: {
-    subject: "Firma İş Ortaklığınız Askıya Alındı",
-    heading: "Firma İş Ortaklığınız Askıya Alındı",
+    subject: "Firma/Satıcı Hesabınız Askıya Alındı",
+    heading: "Firma/Satıcı Hesabınız Askıya Alındı",
     emoji: "⏸️",
     intro:
-      "Firma iş ortaklığınız geçici olarak askıya alınmıştır. Detaylı bilgi ve yeniden aktifleştirme için lütfen kurumsal ekibimizle iletişime geçin.",
+      "Firma/satıcı hesabınız geçici olarak askıya alınmıştır. Bu süreçte mağazanızdaki satış işlemleri duraklatılmıştır. Detaylı bilgi ve yeniden aktifleştirme için lütfen bizimle iletişime geçin.",
     accent: "#d97706",
     filePrefix: "firma-suspended",
   },
