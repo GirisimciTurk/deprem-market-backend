@@ -30,6 +30,11 @@ const Seller = model.define("seller", {
   // Payout için banka hesap sahibi adı
   account_holder: model.text().nullable(),
   is_house: model.boolean().default(false),
+  // İş ortağı türü: "product" (Firmamız Ol — kendi mağazasında ÜRÜN satar; biz
+  // ürün komisyonu alırız) veya "service" (Bayimiz Ol — HİZMET ortağı; müşteriyi
+  // biz buluruz, hizmet talepleri havuzdan öncelikle bu ortaklara yönlendirilir).
+  // Mevcut/eski satıcılar ürün satıcısı sayılır (default "product").
+  partner_type: model.enum(["product", "service"]).default("product").index(),
   // Mağazada ÖNE ÇIKMA (PDF Slayt 4 — bayiler için değer): admin işaretler,
   // storefront "Öne Çıkan Satıcılar" vitrininde + üst sıralarda gösterilir.
   is_featured: model.boolean().default(false).index(),

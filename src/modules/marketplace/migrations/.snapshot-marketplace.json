@@ -1161,6 +1161,25 @@
           "enumItems": [],
           "mappedType": "boolean"
         },
+        "partner_type": {
+          "name": "partner_type",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "'product'",
+          "comment": null,
+          "enumItems": [
+            "product",
+            "service"
+          ],
+          "mappedType": "enum"
+        },
         "is_featured": {
           "name": "is_featured",
           "type": "boolean",
@@ -1310,6 +1329,15 @@
           "primary": false,
           "unique": false,
           "expression": "CREATE INDEX IF NOT EXISTS \"IDX_seller_status\" ON \"seller\" (\"status\") WHERE deleted_at IS NULL"
+        },
+        {
+          "keyName": "IDX_seller_partner_type",
+          "columnNames": [],
+          "composite": false,
+          "constraint": false,
+          "primary": false,
+          "unique": false,
+          "expression": "CREATE INDEX IF NOT EXISTS \"IDX_seller_partner_type\" ON \"seller\" (\"partner_type\") WHERE deleted_at IS NULL"
         },
         {
           "keyName": "IDX_seller_is_featured",

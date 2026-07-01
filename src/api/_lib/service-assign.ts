@@ -28,11 +28,24 @@ export async function autoAssignSeller(
   // Aktif satıcılar (komisyon oranı atama anında snapshot'lanır).
   const { data: sellers } = await query.graph({
     entity: "seller",
-    fields: ["id", "status", "commission_rate", "is_house"],
+    fields: ["id", "status", "commission_rate", "is_house", "partner_type"],
   })
   const sellerMap = new Map<string, any>((sellers ?? []).map((s: any) => [s.id, s]))
-  const candidates = (sellers ?? [])
-    .filter((s: any) => s.status === "active" && !rejected.includes(s.id))
+  const active = (sellers ?? []).filter((s: any) => s.status === "active")
+  // Hizmet talepleri HİZMET ortaklarına (partner_type="service") atanır. Fallback
+  // KARARI, sistemdeki TÜM aktif hizmet ortaklarına göre verilir (reddedilenlerden
+  // bağımsız): en az bir aktif hizmet ortağı varsa, o ortak bu talebi reddetmiş
+  // olsa bile ürün satan firmalara DÜŞÜLMEZ (talep atanmamış kalır). Yalnızca
+  // sistemde hiç aktif hizmet ortağı yoksa geriye dönük olarak tüm aktif satıcılara
+  // düşülür.
+  const hasServiceSellers = active.some(
+    (s: any) => s.partner_type === "service"
+  )
+  const eligible = hasServiceSellers
+    ? active.filter((s: any) => s.partner_type === "service")
+    : active
+  const candidates = eligible
+    .filter((s: any) => !rejected.includes(s.id))
     .map((s: any) => s.id)
   if (candidates.length === 0) return { assigned: false }
 
