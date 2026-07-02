@@ -2339,6 +2339,29 @@ medusaIntegrationTestRunner({
         const showcase = (data[0].metadata as any)?.showcase
         expect(showcase).toEqual(["deals", "bundles"])
       })
+
+      it("mağaza (store) API'si yayındaki ürünün metadata.showcase'ini döner (storefront veri yolu)", async () => {
+        // Yayında + satış kanalında + fiyatlı ürün (storefront'un gördüğü gibi).
+        const p = await seedExtraProduct(container, {
+          sellerId: crudSellerId,
+          title: "Vitrin Store Ürünü",
+          priceKurus: 15000,
+          sku: "SHOWCASE-STORE-1",
+        })
+        const productModule = container.resolve(Modules.PRODUCT)
+        await productModule.updateProducts(p.productId, { metadata: { showcase: ["deals"] } } as any)
+
+        // storefront listProducts ile AYNI: publishable key + region + fields=+metadata.
+        const res = await api.get(
+          `/store/products?region_id=${cRegionId}&limit=100&fields=id,%2Bmetadata`,
+          cPk
+        )
+        expect(res.status).toBe(200)
+        const found = res.data.products.find((x: any) => x.id === p.productId)
+        expect(found).toBeTruthy()
+        // Storefront bu diziyi metadata.showcase'ten okuyup bölümlere/filtreye ayırıyor.
+        expect(found.metadata?.showcase).toEqual(["deals"])
+      })
     })
   },
 })
