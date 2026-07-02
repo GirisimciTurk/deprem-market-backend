@@ -111,6 +111,8 @@ const createSchema = z
     thumbnail: z.string().url().optional().nullable(),
     images: z.array(z.string().url()).max(12).optional(),
     category_ids: z.array(z.string()).max(10).optional(),
+    // Sabit vitrin kategorileri (çoklu). Geçersiz key'ler backend'de süzülür.
+    showcase: z.array(z.string()).max(10).optional(),
     tags: z.array(z.string().min(1)).max(20).optional(),
     // Detaylı anlatım blokları (foto + yazı) — ürün sayfasında sırayla gösterilir.
     content_blocks: z

@@ -23,6 +23,32 @@ const VENDOR_STATUSES = [
   "tamamlandi",
 ]
 
+// Teslim/montaj (VENDOR_STATUSES) yalnız müşteri teklifi ONAYLADIKTAN sonra
+// (onaylandi ve sonrası) uygulanabilir. Aksi halde bayi, teklif onaylanmadan
+// işi "tamamlandi" işaretleyip escrow hakedişini (refreshServicePayout) erken
+// açtırabilir → durum makinesi backend'de zorunlu.
+const WORK_PHASE_STATUSES = new Set([
+  "onaylandi",
+  "tedarik",
+  "teslim_edildi",
+  "montaj_planlandi",
+  "montaj_yapildi",
+  "tamamlandi",
+])
+
+// Teklif yalnız karar öncesi durumlarda gönderilebilir/revize edilebilir. Onaylanmış
+// (onaylandi) veya işi başlamış bir talepte tekrar "offer" ile fiyatın değiştirilip
+// durumun teklif_gonderildi'ye geri sarılması engellenir.
+const OFFERABLE_STATUSES = new Set([
+  "talep",
+  "kesif_planlandi",
+  "kesif_yapildi",
+  "teklif_gonderildi",
+])
+
+// Keşif bilgisi yalnız teklif öncesi aşamada girilebilir.
+const SURVEYABLE_STATUSES = new Set(["talep", "kesif_planlandi", "kesif_yapildi"])
+
 /** GET /vendors/service-requests/:id — bayiye atanan talebin detayı. */
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const resolved = await resolveSeller(req)
@@ -49,6 +75,9 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
   switch (body.action) {
     case "survey": {
+      if (!SURVEYABLE_STATUSES.has(r.status)) {
+        return res.status(409).json({ message: "Bu aşamada keşif bilgisi girilemez." })
+      }
       if (body.survey_report != null) update.survey_report = String(body.survey_report)
       if (body.survey_scheduled_at) {
         update.survey_scheduled_at = new Date(body.survey_scheduled_at)
@@ -61,6 +90,11 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       break
     }
     case "offer": {
+      if (!OFFERABLE_STATUSES.has(r.status)) {
+        return res
+          .status(409)
+          .json({ message: "Teklif yalnız karar öncesi aşamada gönderilebilir/revize edilebilir." })
+      }
       const schema = z.object({
         offer_items: z
           .array(
@@ -89,6 +123,14 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       if (!VENDOR_STATUSES.includes(body.status)) {
         return res.status(400).json({ message: "Geçersiz durum geçişi." })
       }
+      // Teslim/montaj akışı yalnız teklif ONAYLANDIKTAN sonra ilerletilebilir; aksi
+      // halde işi yapmadan "tamamlandi" işaretleyip escrow hakedişini erken açtırmak
+      // mümkün olurdu.
+      if (!WORK_PHASE_STATUSES.has(r.status)) {
+        return res
+          .status(409)
+          .json({ message: "Bu işlem için önce teklifin onaylanmış olması gerekir." })
+      }
       update.status = body.status
       if (body.status === "montaj_planlandi" && body.install_scheduled_at) {
         update.install_scheduled_at = new Date(body.install_scheduled_at)
@@ -97,6 +139,13 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       break
     }
     case "reject": {
+      // Müşteriden tahsilat başladıysa ya da iş tamamlandı/iptal olduysa atama artık
+      // reddedilip başka bayiye devredilemez (mevcut ödeme/hakediş bağlamı kaybolurdu).
+      if (Number(r.paid_total ?? 0) > 0 || ["tamamlandi", "iptal"].includes(r.status)) {
+        return res
+          .status(409)
+          .json({ message: "Bu talep bu aşamada reddedilemez." })
+      }
       const rejected: string[] = Array.isArray(r.rejected_seller_ids) ? r.rejected_seller_ids : []
       await svc.updateServiceRequests({
         id: r.id,

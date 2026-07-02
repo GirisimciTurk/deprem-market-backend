@@ -153,6 +153,7 @@ const SEGMENT_PERMISSION: Record<string, { section?: string; always?: boolean }>
   categories: { always: true },
   brands: { always: true },
   "category-attributes": { always: true },
+  "showcase-categories": { always: true }, // sabit vitrin etiketleri (form referansı)
   uploads: { always: true }, // genel görsel yükleme; iş etkisi yok
   "suggest-category": { section: "products" },
   "generate-listing": { section: "products" },

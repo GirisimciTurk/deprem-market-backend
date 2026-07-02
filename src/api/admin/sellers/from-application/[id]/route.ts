@@ -32,11 +32,34 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const app = await reseller.retrieveResellerApplication(req.params.id).catch(() => null)
   if (!app) return res.status(404).json({ message: "Başvuru bulunamadı." })
 
+  // Reddedilmiş/askıya alınmış başvuru satıcıya dönüştürülemez.
+  if (["rejected", "suspended"].includes((app as any).status)) {
+    return res.status(409).json({ message: "Bu başvuru (reddedilmiş/askıya alınmış) dönüştürülemez." })
+  }
+
   const isFirma =
     (app as { application_type?: string }).application_type === "firma"
   const partnerType = isFirma ? "product" : "service"
 
   const marketplace: MarketplaceModuleService = req.scope.resolve(MARKETPLACE_MODULE)
+
+  // Idempotency: bu başvurunun e-postasına ait satıcı zaten varsa (çift tıklama / tekrar
+  // çağrı) yeni bir mükerrer satıcı yaratma; e-posta = satıcı giriş kimliği (global tekil).
+  if (app.email) {
+    const already = await marketplace.listSellers({ email: app.email }).catch(() => [] as any[])
+    if (already && already.length > 0) {
+      // Başvuru henüz approved değilse tutarlılık için işaretle.
+      if ((app as any).status !== "approved") {
+        await reseller
+          .updateResellerApplications({ id: app.id, status: "approved" })
+          .catch(() => {})
+      }
+      return res.status(409).json({
+        message: "Bu başvuru zaten bir satıcıya dönüştürülmüş.",
+        seller: already[0],
+      })
+    }
+  }
   // handle benzersiz olmalı (unique). Aynı firma adı varsa kısa bir ek ile
   // çakışmayı önle (aksi halde unique-constraint 500 dönerdi).
   let handle = slugify(app.company_name)

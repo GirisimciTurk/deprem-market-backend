@@ -5,6 +5,7 @@ import {
 } from "@medusajs/medusa/core-flows"
 import { MARKETPLACE_MODULE } from "../../../modules/marketplace"
 import { buildAttributeSpecs } from "../../../lib/category-attributes"
+import { sanitizeShowcaseKeys } from "../../../lib/showcase-categories"
 // KDV→native tax senkronu product.created/updated subscriber'ında (product-tax-sync)
 // merkezi yapılır → tüm yazma yolları (create/tek-edit/bulk/native admin) kapsanır.
 
@@ -54,6 +55,8 @@ export type VendorProductInput = {
   images?: string[] | null
   /** Bağlanacak kategori id'leri. */
   category_ids?: string[] | null
+  /** Sabit vitrin kategorileri (çoklu; SHOWCASE_KEYS'ten). metadata.showcase'e yazılır. */
+  showcase?: string[] | null
   /** Etiketler (serbest metin). */
   tags?: string[] | null
   /** Detaylı anlatım blokları (foto + yazı). Ürün sayfasında sırayla render edilir. */
@@ -206,6 +209,11 @@ export async function createVendorProduct(
   // Etiketler: Medusa native tag entity'si ayrı upsert gerektirir; veriyi
   // kaybetmemek için metadata.tags'e (string dizisi) yazıyoruz.
   if (tagValues.length > 0) metadata.tags = tagValues
+
+  // Sabit vitrin kategorileri (En Çok Satanlar, Fırsatlar, ...) — yalnız geçerli
+  // key'ler saklanır; storefront vitrin bölümleri bununla beslenir.
+  const showcaseKeys = sanitizeShowcaseKeys(input.showcase)
+  if (showcaseKeys.length > 0) metadata.showcase = showcaseKeys
 
   // Detaylı anlatım blokları (foto + yazı) — ürün sayfasında sırayla gösterilir.
   const blocks = (input.content_blocks ?? [])

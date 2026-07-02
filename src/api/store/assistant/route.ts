@@ -2,6 +2,7 @@ import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { z } from "zod"
 import { isLlmEnabled, assistAgent, type AgentNavOption } from "../../../lib/llm"
+import { assistantLimiter, enforceRateLimit } from "../../../lib/rate-limiter"
 
 const bodySchema = z.object({
   // Kullanıcının yeni mesajı.
@@ -55,6 +56,8 @@ const NAV_OPTIONS: AgentNavOption[] = [
  * sabit yanıt (fail-open). Publishable key zorunludur.
  */
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
+  if (await enforceRateLimit(assistantLimiter, req, res)) return
+
   const parsed = bodySchema.safeParse(req.body ?? {})
   if (!parsed.success) {
     return res.status(400).json({ message: "Geçersiz istek.", issues: parsed.error.issues })

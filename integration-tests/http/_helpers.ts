@@ -335,3 +335,80 @@ export async function seedCommerce(container: any, opts: { sellerId?: string } =
 
   return { pubKey, regionId: region.id, salesChannelId: sc.id, product, variantId: variant.id, locationId: location.id }
 }
+
+/**
+ * seedCommerce ile kurulmuş ortamı VARSAYARAK (satış kanalı + kargo profili + stok
+ * lokasyonu mevcut) İKİNCİ bir yayında/fiyatlı/stoklu ürün oluşturur ve verilen
+ * satıcıya bağlar. Çok-satıcılı sipariş bölme (splitOrder) E2E'si için kullanılır.
+ */
+export async function seedExtraProduct(
+  container: any,
+  opts: {
+    sellerId: string
+    title: string
+    priceKurus: number
+    sku: string
+    stock?: number
+    vatRate?: number // set edilirse metadata.vat_rate yazılır (KDV testi için)
+  }
+) {
+  const { createProductsWorkflow, createInventoryLevelsWorkflow } = await import(
+    "@medusajs/core-flows"
+  )
+  const link = container.resolve(ContainerRegistrationKeys.LINK)
+  const query = container.resolve(ContainerRegistrationKeys.QUERY)
+  const sc = (await container.resolve(Modules.SALES_CHANNEL).listSalesChannels({}, { take: 1 }))[0]
+  const profile = (await container.resolve(Modules.FULFILLMENT).listShippingProfiles({ type: "default" }))[0]
+  const location = (await container.resolve(Modules.STOCK_LOCATION).listStockLocations({}, { take: 1 }))[0]
+
+  const { result: products } = await createProductsWorkflow(container).run({
+    input: {
+      products: [
+        {
+          title: opts.title,
+          status: "published",
+          shipping_profile_id: profile.id,
+          ...(opts.vatRate != null ? { metadata: { vat_rate: opts.vatRate } } : {}),
+          options: [{ title: "Model", values: ["Tek"] }],
+          sales_channels: [{ id: sc.id }],
+          variants: [
+            {
+              title: "Tek",
+              sku: opts.sku,
+              manage_inventory: true,
+              options: { Model: "Tek" },
+              prices: [{ currency_code: "try", amount: opts.priceKurus }],
+            },
+          ],
+        },
+      ],
+    },
+  })
+  const product = products[0]
+  const variant = product.variants[0]
+
+  const { data: vrows } = await query.graph({
+    entity: "variant",
+    fields: ["inventory_items.inventory_item_id"],
+    filters: { id: variant.id },
+  })
+  const invItemId = (vrows[0] as any).inventory_items[0].inventory_item_id
+  await createInventoryLevelsWorkflow(container).run({
+    input: {
+      inventory_levels: [
+        {
+          inventory_item_id: invItemId,
+          location_id: location.id,
+          stocked_quantity: opts.stock ?? 100,
+        },
+      ],
+    },
+  })
+
+  await link.create({
+    [MARKETPLACE_MODULE]: { seller_id: opts.sellerId },
+    [Modules.PRODUCT]: { product_id: product.id },
+  })
+
+  return { productId: product.id, variantId: variant.id }
+}

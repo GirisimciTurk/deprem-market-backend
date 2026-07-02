@@ -9,6 +9,7 @@ import { z } from "zod"
 import { resolveSeller } from "../../_lib/resolve-seller"
 import { MARKETPLACE_MODULE } from "../../../../modules/marketplace"
 import { buildAttributeSpecs } from "../../../../lib/category-attributes"
+import { sanitizeShowcaseKeys } from "../../../../lib/showcase-categories"
 
 /** Ürünün bu satıcıya ait olup olmadığını doğrular. */
 async function ownsProduct(req: MedusaRequest, productId: string, sellerId: string) {
@@ -90,6 +91,7 @@ const updateSchema = z.object({
   // Çoklu görsel — verilirse thumbnail + images birlikte güncellenir (ilk = ana).
   images: z.array(z.string().url()).max(12).optional(),
   category_ids: z.array(z.string()).max(10).optional(),
+  showcase: z.array(z.string()).max(10).optional(),
   tags: z.array(z.string().min(1)).max(20).optional(),
   content_blocks: z
     .array(z.object({ image: z.string().url().optional().nullable(), text: z.string().max(1200) }))
@@ -186,6 +188,12 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   if (data.original_price !== undefined) {
     if (data.original_price && data.original_price > 0) metadata.compare_at_price = data.original_price
     else delete metadata.compare_at_price
+    metaChanged = true
+  }
+  if (data.showcase !== undefined) {
+    const keys = sanitizeShowcaseKeys(data.showcase)
+    if (keys.length > 0) metadata.showcase = keys
+    else delete metadata.showcase
     metaChanged = true
   }
   if (data.content_blocks !== undefined) {

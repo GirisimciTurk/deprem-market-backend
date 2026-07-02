@@ -28,7 +28,10 @@ export async function splitOrder(container: any, orderId: string): Promise<numbe
   let order: any
   try {
     order = await orderModuleService.retrieveOrder(orderId, {
-      relations: ["items", "shipping_address"],
+      // items.adjustments → kalem indirimleri (kupon/promosyon). Komisyon ve subtotal
+      // İNDİRİM SONRASI tutardan hesaplanır (aksi halde satıcıya/komisyona indirim
+      // öncesi ham tutar yansır → müşterinin ödediğinden fazla).
+      relations: ["items", "items.adjustments", "shipping_address"],
     })
   } catch (err: any) {
     logger.error(`[splitOrder] Sipariş bulunamadı: ${orderId} (${err.message})`)
@@ -140,13 +143,20 @@ export async function splitOrder(container: any, orderId: string): Promise<numbe
     }, 0)
     const cargo_fee = computeCargoFee(cargoTariff, totalDesi)
     const snapshot = g.items.map(({ it, rate }) => {
-      const line_total = num(it.unit_price) * num(it.quantity)
+      // Kalem indirimi (kupon/promosyon adjustment'ları; pozitif tutarlar toplanır).
+      const line_discount = Array.isArray(it.adjustments)
+        ? it.adjustments.reduce((s: number, a: any) => s + num(a.amount), 0)
+        : 0
+      // Komisyon/subtotal tabanı = İNDİRİM SONRASI kalem tutarı (müşterinin gerçekte
+      // kalemlere ödediği). unit_price ham (katalog) fiyat olarak referansta kalır.
+      const line_total = Math.max(0, Math.round(num(it.unit_price) * num(it.quantity) - line_discount))
       return {
         product_id: it.product_id,
         title: it.title,
         variant_title: it.variant_title,
         quantity: num(it.quantity),
         unit_price: num(it.unit_price),
+        discount: Math.round(line_discount),
         line_total,
         commission_rate: rate,
         commission_amount: Math.round((line_total * rate) / 100),

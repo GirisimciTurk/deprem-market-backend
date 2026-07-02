@@ -148,6 +148,10 @@ export const vendorMessageLimiter = new RateLimiter(30, 60000, "vendor-message")
 // başına 120/dk. Yalnız kötüye-kullanım selini keser, normal gezinmeyi etkilemez.
 export const trackLimiter = new RateLimiter(120, 60000, "track")
 
+// Maskot AI asistanı — her istek ücretli LLM çağrısı + 300-satır ürün sorgusu yapar;
+// kimliksiz/açık uç olduğundan IP başına 20/dk ile maliyet/DoS amplifikasyonu sınırlanır.
+export const assistantLimiter = new RateLimiter(20, 60000, "assistant")
+
 /**
  * Ortak yardımcı: istek IP'si için rate-limit uygula. Limitlenmişse 429 yazıp true döner;
  * çağıran route hemen `return` etmeli. ASYNC — `await enforceRateLimit(...)` olarak kullan.

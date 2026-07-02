@@ -16,12 +16,18 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
   const { data } = await query.graph({
     entity: "seller_admin",
-    fields: ["id", "email", "seller_id"],
+    fields: ["id", "email", "seller_id", "is_owner"],
     filters: { id } as any,
   })
   const member = data?.[0] as any
   if (!member || member.seller_id !== resolved.seller.id) {
     return res.status(404).json({ message: "Çalışan bulunamadı." })
+  }
+  // Mağaza sahibinin şifre-sıfırlama bağlantısını yalnız bir başka sahip üretebilir.
+  // Aksi halde `team:full` yetkili bir çalışan, sahibin linkini alıp hesabını ele
+  // geçirebilirdi (link yanıtta düz metin dönüyor).
+  if (member.is_owner && !resolved.admin.is_owner) {
+    return res.status(403).json({ message: "Mağaza sahibinin şifresini sıfırlayamazsınız." })
   }
   if (!member.email) {
     return res.status(400).json({ message: "Çalışanın e-posta adresi yok." })

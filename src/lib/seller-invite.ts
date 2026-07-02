@@ -19,7 +19,11 @@ function throwawayPassword(): string {
 
 export type InviteResult =
   | { ok: true; email: string; created: boolean; reset_link: string }
-  | { ok: false; reason: "not_found" | "house" | "no_email" | "auth_failed"; message: string }
+  | {
+      ok: false
+      reason: "not_found" | "house" | "no_email" | "auth_failed" | "email_taken"
+      message: string
+    }
 
 /**
  * Bir satıcıya panel girişi hazırlar ve "şifreni belirle" BAĞLANTISI gönderir
@@ -83,20 +87,32 @@ export async function inviteSeller(container: any, sellerId: string): Promise<In
     return { ok: false, reason: "auth_failed", message: "Giriş kimliği oluşturulamadı." }
   }
 
-  // 2) SellerAdmin (yoksa) oluştur.
+  // 2) SellerAdmin (yoksa) oluştur. seller_admin.email GLOBAL tekil olduğundan, bu
+  // e-posta başka bir mağazanın kullanıcısına aitse createSellerAdmins fırlatır;
+  // "ASLA throw etmez" sözleşmesi gereği yakalayıp hata döndürüyoruz (aksi halde
+  // çağıran uçta 500 olur ve satıcı zaten oluşmuşsa admin'siz öksüz kayıt kalır).
   const admins = await marketplace.listSellerAdmins({ seller_id: sellerId })
   let created = false
   let sellerAdminId = (admins[0] as any)?.id
   if (!sellerAdminId) {
-    const a = await marketplace.createSellerAdmins({
-      email,
-      first_name: (seller as any).name || null,
-      // Admin tarafından davet edilen ilk satıcı kullanıcısı = mağaza sahibi.
-      is_owner: true,
-      seller_id: sellerId,
-    } as any)
-    sellerAdminId = (a as any).id
-    created = true
+    try {
+      const a = await marketplace.createSellerAdmins({
+        email,
+        first_name: (seller as any).name || null,
+        // Admin tarafından davet edilen ilk satıcı kullanıcısı = mağaza sahibi.
+        is_owner: true,
+        seller_id: sellerId,
+      } as any)
+      sellerAdminId = (a as any).id
+      created = true
+    } catch (e: any) {
+      logger.error(`[SellerInvite] seller_admin oluşturulamadı (${email}): ${e?.message}`)
+      return {
+        ok: false,
+        reason: "email_taken",
+        message: "Bu e-posta zaten başka bir satıcı kullanıcısına kayıtlı.",
+      }
+    }
   }
 
   // 3) Auth identity'yi satıcı kullanıcısına bağla (müşteri kimliği vb. korunur).

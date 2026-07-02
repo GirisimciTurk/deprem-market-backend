@@ -156,6 +156,98 @@ medusaIntegrationTestRunner({
       })
     })
 
+    // Fix: team:full yetkili bir NON-owner çalışan, sahibin şifre-sıfırlama linkini
+    // alıp (yanıtta düz metin döner) hesabı ele geçirebiliyordu. Guard: sahibin
+    // şifresini yalnız başka bir sahip sıfırlayabilir.
+    describe("Şifre sıfırlama — sahip ele geçirme koruması", () => {
+      let teamFullStaffToken: string
+
+      beforeAll(async () => {
+        const s = await createStaffWithToken(container, sellerId, {
+          email: "rbac-teamfull@test.local",
+          name: "Ekip Yöneticisi",
+          role: "custom",
+          permissions: { team: "full" }, // yalnız ekip yönetimi tam yetkisi
+        })
+        teamFullStaffToken = s.token
+      })
+
+      it("team:full çalışan mağaza SAHİBİNİN şifresini sıfırlayamaz (403)", async () => {
+        const res = await api
+          .post(`/vendors/team/${ownerAdminId}/reset-password`, {}, authHeader(teamFullStaffToken))
+          .catch((e: any) => e.response)
+        expect(res.status).toBe(403)
+      })
+
+      it("team:full çalışan owner-OLMAYAN çalışanın şifresini sıfırlayabilir (200)", async () => {
+        const res = await api.post(
+          `/vendors/team/${permStaffId}/reset-password`,
+          {},
+          authHeader(teamFullStaffToken)
+        )
+        expect(res.status).toBe(200)
+        expect(res.data.reset_link).toContain("/sifre-belirle")
+      })
+    })
+
+    // view yetkili çalışan, para/stok hareketi yaratan DERİN write uçlarında (fulfill/
+    // receive/offer/ürün düzenleme) middleware tarafından 403 almalı. Kaynak var olmasa
+    // bile middleware handler'dan ÖNCE çalışır → 403 (yol segmenti → bölüm eşlemesi).
+    describe("RBAC yazma-zorlaması (view yetkilisi derin write'larda 403)", () => {
+      let viewStaffToken: string
+
+      beforeAll(async () => {
+        const s = await createStaffWithToken(container, sellerId, {
+          email: "rbac-viewonly@test.local",
+          name: "Salt Okuma",
+          role: "custom",
+          permissions: {
+            orders: "view",
+            returns: "view",
+            service_requests: "view",
+            products: "view",
+          },
+        })
+        viewStaffToken = s.token
+      })
+
+      it("orders:view → POST /vendors/orders/:id/fulfill 403", async () => {
+        const res = await api
+          .post(
+            "/vendors/orders/so_yok/fulfill",
+            { carrier: "x", tracking_number: "y" },
+            authHeader(viewStaffToken)
+          )
+          .catch((e: any) => e.response)
+        expect(res.status).toBe(403)
+      })
+
+      it("returns:view → POST /vendors/returns/:id/receive 403", async () => {
+        const res = await api
+          .post("/vendors/returns/sr_yok/receive", {}, authHeader(viewStaffToken))
+          .catch((e: any) => e.response)
+        expect(res.status).toBe(403)
+      })
+
+      it("service_requests:view → POST /vendors/service-requests/:id (offer) 403", async () => {
+        const res = await api
+          .post(
+            "/vendors/service-requests/req_yok",
+            { action: "offer", offer_total: 1 },
+            authHeader(viewStaffToken)
+          )
+          .catch((e: any) => e.response)
+        expect(res.status).toBe(403)
+      })
+
+      it("products:view → POST /vendors/products/:id (düzenleme) 403", async () => {
+        const res = await api
+          .post("/vendors/products/prod_yok", { price: 1 }, authHeader(viewStaffToken))
+          .catch((e: any) => e.response)
+        expect(res.status).toBe(403)
+      })
+    })
+
     describe("İzin zorlama (çalışan token)", () => {
       it("yetkili bölüm okunur (products:full → 200)", async () => {
         const res = await api.get("/vendors/products?limit=5", authHeader(permStaffToken))
