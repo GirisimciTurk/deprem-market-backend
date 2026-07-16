@@ -2,6 +2,7 @@ import { MedusaContainer } from "@medusajs/framework/types"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { sendMail } from "../lib/mailer"
 import { sendToCustomer } from "../lib/web-push"
+import { listEmailOptedInCustomerIds } from "../lib/marketing-consent"
 
 /**
  * Terk edilmiş sepet kurtarma (saatlik). Tamamlanmamış (completed_at NULL), e-postası
@@ -90,9 +91,19 @@ export default async function recoverAbandonedCartsJob(container: MedusaContaine
 
   if (!carts.length) return
 
+  // KVKK: pazarlama e-postası iznini bir kez topluca hesapla. Açıkça opt-out yapan
+  // ÜYE müşterilere kurtarma maili gönderilmez (push ayrı kanaldır, dokunulmaz).
+  const emailAllowed = await listEmailOptedInCustomerIds(
+    container,
+    carts.map((c) => c.customer_id).filter(Boolean)
+  )
+
   let mailed = 0
   let pushed = 0
+  let skipped = 0
   for (const cart of carts) {
+    // Üye ve e-posta iznini kapatmışsa maili atla (sepet damgası yine de vurulur).
+    const mayEmail = !cart.customer_id || emailAllowed.has(cart.customer_id)
     const currency = (cart.currency_code || "try").toUpperCase()
     const html = recoveryEmail({
       title: cart.sample_title,
@@ -103,15 +114,19 @@ export default async function recoverAbandonedCartsJob(container: MedusaContaine
       url: `${STOREFRONT_URL}/tr/cart`,
     })
 
-    try {
-      const r = await sendMail({
-        to: cart.email,
-        subject: "Sepetinizde ürünler sizi bekliyor 🛒",
-        html,
-      })
-      if (r.ok) mailed++
-    } catch (e: any) {
-      logger.warn(`[recover-carts] mail ${cart.id}: ${e?.message}`)
+    if (mayEmail) {
+      try {
+        const r = await sendMail({
+          to: cart.email,
+          subject: "Sepetinizde ürünler sizi bekliyor 🛒",
+          html,
+        })
+        if (r.ok) mailed++
+      } catch (e: any) {
+        logger.warn(`[recover-carts] mail ${cart.id}: ${e?.message}`)
+      }
+    } else {
+      skipped++
     }
 
     if (cart.customer_id) {
@@ -136,7 +151,9 @@ export default async function recoverAbandonedCartsJob(container: MedusaContaine
     )
   }
 
-  logger.info(`[recover-carts] ${carts.length} terk sepet işlendi · ${mailed} mail · ${pushed} push`)
+  logger.info(
+    `[recover-carts] ${carts.length} terk sepet işlendi · ${mailed} mail · ${pushed} push · ${skipped} izin-yok (mail atlandı)`
+  )
 }
 
 export const config = {

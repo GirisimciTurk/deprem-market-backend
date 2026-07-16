@@ -6,6 +6,10 @@ import {
 import { MARKETPLACE_MODULE } from "../../../modules/marketplace"
 import { buildAttributeSpecs } from "../../../lib/category-attributes"
 import { sanitizeShowcaseKeys } from "../../../lib/showcase-categories"
+import {
+  sanitizeVendorCertifications,
+  type VendorCertificationInput,
+} from "./certifications"
 // KDV→native tax senkronu product.created/updated subscriber'ında (product-tax-sync)
 // merkezi yapılır → tüm yazma yolları (create/tek-edit/bulk/native admin) kapsanır.
 
@@ -61,6 +65,8 @@ export type VendorProductInput = {
   tags?: string[] | null
   /** Detaylı anlatım blokları (foto + yazı). Ürün sayfasında sırayla render edilir. */
   content_blocks?: { image?: string | null; text: string }[] | null
+  /** Sertifikalar/belgeler (satıcı beyanı). metadata.certifications'a verified=false yazılır. */
+  certifications?: VendorCertificationInput[] | null
   // --- Marka (onaylı Brand listesinden) ---
   /** Seçilen markanın id'si. metadata.brand_id'ye yazılır; subtitle marka adını taşır. */
   brand_id?: string | null
@@ -220,6 +226,10 @@ export async function createVendorProduct(
     .map((b) => ({ image: (b.image || "").trim() || null, text: (b.text || "").trim() }))
     .filter((b) => b.text || b.image)
   if (blocks.length > 0) metadata.content_blocks = blocks
+
+  // Sertifikalar (satıcı beyanı) — verified DAİMA false (yalnız admin doğrular).
+  const certifications = sanitizeVendorCertifications(input.certifications)
+  if (certifications.length > 0) metadata.certifications = certifications
 
   // Marka kimliği (subtitle marka ADInı taşır; metadata.brand_id eşleştirme için).
   if (input.brand_id) metadata.brand_id = input.brand_id

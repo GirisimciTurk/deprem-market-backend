@@ -205,5 +205,9 @@ module.exports = defineConfig({
       // — first-party analitik + öneri/segment/sepet-kurtarma için temel.
       resolve: "./src/modules/analytics",
     },
+    newsletter: {
+      // Anonim bülten aboneliği (footer formu) — pazarlama listesi tohumu.
+      resolve: "./src/modules/newsletter",
+    },
   },
 })

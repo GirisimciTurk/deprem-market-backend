@@ -10,6 +10,7 @@ import { resolveSeller } from "../../_lib/resolve-seller"
 import { MARKETPLACE_MODULE } from "../../../../modules/marketplace"
 import { buildAttributeSpecs } from "../../../../lib/category-attributes"
 import { sanitizeShowcaseKeys } from "../../../../lib/showcase-categories"
+import { sanitizeVendorCertifications } from "../../_lib/certifications"
 
 /** Ürünün bu satıcıya ait olup olmadığını doğrular. */
 async function ownsProduct(req: MedusaRequest, productId: string, sellerId: string) {
@@ -96,6 +97,17 @@ const updateSchema = z.object({
   content_blocks: z
     .array(z.object({ image: z.string().url().optional().nullable(), text: z.string().max(1200) }))
     .max(12)
+    .optional(),
+  // Sertifikalar / belgeler — satıcı beyanı (verified KABUL EDİLMEZ; yalnız admin doğrular).
+  certifications: z
+    .array(
+      z.object({
+        label: z.string().min(1).max(80),
+        authority: z.string().max(80).optional().nullable(),
+        document_url: z.string().url().optional().nullable(),
+      })
+    )
+    .max(15)
     .optional(),
   // Marka / kategori özellikleri / KDV / termin → metadata'ya merge edilir.
   brand_id: z.string().optional().nullable(),
@@ -202,6 +214,14 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       .filter((b) => b.text || b.image)
     if (blocks.length > 0) metadata.content_blocks = blocks
     else delete metadata.content_blocks
+    metaChanged = true
+  }
+  if (data.certifications !== undefined) {
+    // verified daima yeniden hesaplanır: satıcı doğrulayamaz, mevcut admin
+    // doğrulaması (verified:true) aynı etiketle korunur.
+    const certs = sanitizeVendorCertifications(data.certifications, existingMeta)
+    if (certs.length > 0) metadata.certifications = certs
+    else delete metadata.certifications
     metaChanged = true
   }
   if (data.brand_id !== undefined) {

@@ -3,6 +3,7 @@ import { REVIEW_MODULE } from "../modules/review"
 import ReviewModuleService from "../modules/review/service"
 import { moderateReview, moderateImage, isLlmEnabled, type AiAction } from "../lib/llm"
 import { fetchImageAsBase64 } from "../lib/llm/client"
+import { recomputeProductRating } from "../lib/recompute-product-rating"
 
 /**
  * Yeni müşteri yorumunu Gemini ile moderasyondan geçirir (asenkron).
@@ -89,6 +90,11 @@ export default async function reviewCreatedModerationHandler({
     ai_confidence: Math.round(textOutcome.confidence * 100), // 0-100 yüzde
     ai_reason: reason.slice(0, 1000),
   })
+
+  // AI oto-onay yorumu yayınladıysa ürün puanı agregatını güncelle (kartlarda görünür).
+  if (status === "approved") {
+    await recomputeProductRating(container, review.product_id)
+  }
 
   logger.info(
     `[ai-moderation] yorum ${data.id}: ${action} (metin:${textOutcome.verdict}${

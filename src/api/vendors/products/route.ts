@@ -119,6 +119,17 @@ const createSchema = z
       .array(z.object({ image: z.string().url().optional().nullable(), text: z.string().max(1200) }))
       .max(12)
       .optional(),
+    // Sertifikalar / belgeler — satıcı beyanı (verified KABUL EDİLMEZ; yalnız admin doğrular).
+    certifications: z
+      .array(
+        z.object({
+          label: z.string().min(1).max(80),
+          authority: z.string().max(80).optional().nullable(),
+          document_url: z.string().url().optional().nullable(),
+        })
+      )
+      .max(15)
+      .optional(),
     // Kargo / boyut (kg & cm).
     weight: z.number().positive().optional(),
     length: z.number().positive().optional(),

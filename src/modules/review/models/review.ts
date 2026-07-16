@@ -17,6 +17,10 @@ const ProductReview = model.define("product_review", {
   // Yorum sahibinin e-postası (giriş yapmış müşteride yakalanır) — yorum admin
   // tarafından "Yayınla" (approved) yapıldığında bilgilendirme maili için kullanılır.
   customer_email: model.text().nullable(),
+  // "Satın Almış Müşteri" rozeti bu alana bağlıdır: yorum oluşturulurken müşterinin
+  // bu ürünü (iptal edilmemiş) bir siparişinde gerçekten satın alıp almadığı kontrol
+  // edilip burada kalıcılaştırılır. Yalnız giriş yapmış olmak (customer_id) YETMEZ.
+  verified_purchase: model.boolean().default(false),
   rating: model.number(),
   comment: model.text(),
   status: model.enum(["pending", "approved", "spam"]).default("pending").index(),

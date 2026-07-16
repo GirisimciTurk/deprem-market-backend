@@ -22,6 +22,9 @@ const ResellerApplication = model.define("reseller_application", {
   // sonra başvuruyu otomatik siler. Durum red dışına alınırsa null'lanır
   // (silme zamanlayıcısı iptal). Bkz. src/jobs/purge-rejected-applications.ts
   rejected_at: model.dateTime().nullable(),
+  // Başvuru onaylanınca otomatik açılan satıcının id'si. Dolu olması, satıcının
+  // zaten açıldığını gösterir (tekrar onayda çift satıcı oluşturulmaz — idempotensi).
+  seller_id: model.text().nullable(),
 })
 
 export default ResellerApplication

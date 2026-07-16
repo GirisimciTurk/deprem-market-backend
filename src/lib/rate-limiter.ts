@@ -137,6 +137,8 @@ export const expertUploadLimiter = new RateLimiter(12, 300000, "expert-upload")
 export const expertRequestLimiter = new RateLimiter(5, 600000, "expert-request")
 // İade talebi: dakikada 5 (spam iade taleplerine karşı)
 export const returnRequestLimiter = new RateLimiter(5, 60000, "return-request")
+
+export const newsletterLimiter = new RateLimiter(5, 600000, "newsletter")
 // Google hesap bağlama: dakikada 5
 export const googleLinkLimiter = new RateLimiter(5, 60000, "google-link")
 // Satıcı (vendor) ağır/yan-etkili uçları: toplu ürün yükleme (500 satır + workflow)

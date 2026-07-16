@@ -26,7 +26,22 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     { order: { created_at: "DESC" } }
   )
 
-  return res.json({ reviews })
+  // Public yanıtı yalnız güvenli alanlarla döndür: customer_id / customer_email /
+  // ai_* alanları müşteri PII'si veya iç durumdur, storefront'a sızmamalı.
+  const publicReviews = (reviews || []).map((r: any) => ({
+    id: r.id,
+    product_id: r.product_id,
+    product_handle: r.product_handle,
+    product_title: r.product_title,
+    customer_name: r.customer_name,
+    rating: r.rating,
+    comment: r.comment,
+    images: r.images ?? null,
+    verified_purchase: !!r.verified_purchase,
+    created_at: r.created_at,
+  }))
+
+  return res.json({ reviews: publicReviews })
 }
 
 const createSchema = z.object({
@@ -71,6 +86,9 @@ export async function POST(
   // Giriş yapmış müşterinin e-postasını yakala (yorum yayınlanınca bilgilendirme için).
   const customerId = req.auth_context?.actor_id || null
   let customerEmail: string | null = null
+  // "Satın Almış Müşteri" rozeti için: müşteri bu ürünü gerçekten (iptal edilmemiş)
+  // bir siparişinde satın almış mı? Yalnız giriş yapmış olmak yeterli DEĞİL.
+  let verifiedPurchase = false
   if (customerId) {
     try {
       const { data: customers } = await query.graph({
@@ -81,6 +99,20 @@ export async function POST(
       customerEmail = (customers?.[0] as any)?.email || null
     } catch {
       customerEmail = null
+    }
+    try {
+      const { data: orders } = await query.graph({
+        entity: "order",
+        fields: ["id", "status", "items.product_id"],
+        filters: { customer_id: customerId },
+      })
+      verifiedPurchase = (orders || []).some(
+        (o: any) =>
+          o?.status !== "canceled" &&
+          (o?.items || []).some((it: any) => it?.product_id === product.id)
+      )
+    } catch {
+      verifiedPurchase = false
     }
   }
 
@@ -94,6 +126,7 @@ export async function POST(
       customer_id: customerId,
       customer_name: name,
       customer_email: customerEmail,
+      verified_purchase: verifiedPurchase,
       rating,
       comment,
       status: "pending",

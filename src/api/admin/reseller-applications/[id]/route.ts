@@ -6,6 +6,7 @@ import {
   sendResellerStatusEmail,
   ResellerMailStatus,
 } from "../../../../lib/reseller-mail"
+import { provisionSellerFromApplication } from "../../../../lib/provision-seller-from-application"
 
 const updateSchema = z.object({
   status: z.enum(["pending", "approved", "rejected", "suspended"]),
@@ -22,11 +23,23 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const reseller: ResellerModuleService = req.scope.resolve(RESELLER_MODULE)
   // "rejected" yapıldığında zaman damgası vurulur → saatlik temizlik işi 24 saat
   // sonra siler. Başka bir duruma alınırsa damga sıfırlanır (silme iptal).
-  const application = await reseller.updateResellerApplications({
+  let application = await reseller.updateResellerApplications({
     id: req.params.id,
     status: parsed.data.status,
     rejected_at: parsed.data.status === "rejected" ? new Date() : null,
   })
+
+  // Onaylandıysa satıcı hesabını OTOMATİK aç (idempotent; seller_id doluysa atlar).
+  // Böylece manuel "başvuruyu satıcıya çevirme" adımı ortadan kalkar.
+  if (parsed.data.status === "approved") {
+    try {
+      await provisionSellerFromApplication(req.scope, application)
+      // seller_id yazıldıysa güncel kaydı geri oku (yanıtta dönsün).
+      application = await reseller.retrieveResellerApplication(req.params.id)
+    } catch (e: any) {
+      req.scope.resolve("logger").error(`[reseller-applications] Satıcı açılamadı: ${e?.message}`)
+    }
+  }
 
   // Sonuç maili (mail hatası admin akışını bozmasın).
   if (MAIL_STATUSES.includes(parsed.data.status as ResellerMailStatus)) {
