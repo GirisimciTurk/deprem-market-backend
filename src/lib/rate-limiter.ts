@@ -1,5 +1,6 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Redis } from "ioredis"
+import { getClientIp } from "./client-ip"
 
 /**
  * Rate limiter — Redis destekli, çok-sunuculu (yatay ölçek) ortamda tutarlı.
@@ -163,9 +164,10 @@ export async function enforceRateLimit(
   req: MedusaRequest,
   res: MedusaResponse
 ): Promise<boolean> {
-  const rawIp =
-    (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "unknown_ip"
-  const clientIp = rawIp.split(",")[0].trim()
+  // X-Forwarded-For'un SOLDAN ilk değeri istemci uydurmasıdır — ona göre
+  // anahtarlamak, başlığı her istekte değiştiren saldırgana limiti tamamen
+  // baypas ettirir. getClientIp sağdan/güvenilir vekil sayısına göre çözer.
+  const clientIp = getClientIp(req)
   if (await limiter.isLimited(clientIp)) {
     res.status(429).json({
       success: false,

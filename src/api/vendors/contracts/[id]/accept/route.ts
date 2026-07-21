@@ -2,6 +2,7 @@ import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { z } from "zod"
 import { createHash } from "crypto"
 import { resolveSeller } from "../../../_lib/resolve-seller"
+import { getClientIp } from "../../../../../lib/client-ip"
 import { MARKETPLACE_MODULE } from "../../../../../modules/marketplace"
 import MarketplaceModuleService from "../../../../../modules/marketplace/service"
 
@@ -45,11 +46,10 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     return res.json({ ok: true, already: true })
   }
 
-  // IP — nginx arkasında gerçek istemci X-Forwarded-For'ın ilk değerinde.
-  const ip =
-    (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
-    (req.socket as any)?.remoteAddress ||
-    null
+  // IP hukuki delilin parçası → uydurulabilir olmamalı. X-Forwarded-For'un
+  // SOLDAN ilk değerini istemcinin kendisi yazabilir; nginx kendi gördüğü IP'yi
+  // zincirin SONUNA ekler (bkz. src/lib/client-ip.ts).
+  const ip = getClientIp(req) || null
   const userAgent = (req.headers["user-agent"] as string)?.slice(0, 500) || null
 
   // Onaylanan metnin değişmezlik kanıtı: title|version|body üzerinden SHA-256.
