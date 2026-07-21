@@ -339,7 +339,10 @@ medusaIntegrationTestRunner({
             headers: {
               authorization: `Bearer ${contractToken}`,
               "user-agent": "TestBrowser/1.0",
-              "x-forwarded-for": "88.230.45.12, 10.0.0.1",
+              // Gerçekçi zincir: soldaki değeri İSTEMCİ uydurmuştur, sağdakini
+              // nginx ($proxy_add_x_forwarded_for) ekler. Delile yazılması
+              // gereken, nginx'in yazdığı sağdaki gerçek IP'dir.
+              "x-forwarded-for": "10.0.0.1, 88.230.45.12",
             },
           }
         )
@@ -350,6 +353,7 @@ medusaIntegrationTestRunner({
           seller_id: contractSellerId,
           contract_id: cid,
         })
+        // Uydurulan "10.0.0.1" DEĞİL, nginx'in doğruladığı IP delile geçmeli.
         expect(acc.ip).toEqual("88.230.45.12")
         expect(acc.user_agent).toEqual("TestBrowser/1.0")
         expect(acc.full_name).toEqual("Mehmet Yılmaz (Yetkili)")
