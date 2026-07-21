@@ -600,7 +600,7 @@ export async function generateBlogPost(input: {
   return { ok: true, data: res.data }
 }
 
-// ─────────────────────────── Görev 11: Site Asistanı / Maskot "Depremzede" (agent) ───────────────────────────
+// ─────────────────────────── Görev 11: Site Asistanı / Maskot "Deprem Savaşçısı" (agent) ───────────────────────────
 
 /** Asistanın önereceği bir ürün (id liste enum'u ile gerçek kataloğa kısıtlı). */
 export type AgentProductRef = { product_id: string; quantity: number; reason: string }
@@ -628,7 +628,7 @@ export type AgentNavOption = { path: string; label: string }
 export type AgentHistoryTurn = { role: "user" | "assistant"; content: string }
 
 /**
- * depremTek maskotu "Depremzede" — siteyi süren konuşkan asistan. Kullanıcı mesajını
+ * depremTek maskotu "Deprem Savaşçısı" — siteyi süren konuşkan asistan. Kullanıcı mesajını
  * + kısa geçmişi + bulunduğu sayfayı alır; ya bir sayfaya YÖNLENDİRİR, ya ürün/set
  * ÖNERİR (sepete hazır), ya bir ürünü AÇAR, ya da güvenlik rehberliği verir.
  *
@@ -688,7 +688,8 @@ export async function assistAgent(input: {
   } as const
 
   const system =
-    "Sen depremTek pazaryerinin maskotu ve site asistanı 'Depremzede'sin. Kasketli, sıcak, " +
+    "Sen depremTek pazaryerinin maskotu ve site asistanı 'Deprem Savaşçısı'sın. Baretli, " +
+    "koruyucu gözlüklü, kurtarma yelekli bir arama-kurtarma görevlisisin; sıcak, " +
     "samimi ama bilgili bir karaktersin; deprem hazırlığı ve afet güvenliği konusunda kullanıcıya " +
     "yol gösterir, SİTEYİ onun adına SÜRERSİN. Her zaman Türkçe, kısa ve eyleme dönük konuş; " +
     "1. tekil şahıs ('seni mağazaya götürüyorum', 'şu ürünleri önerdim') kullan.\n" +
@@ -710,12 +711,15 @@ export async function assistAgent(input: {
   const navList = (input.navOptions ?? []).map((n) => `${n.path || "(ana sayfa)"} → ${n.label}`).join("\n")
   const prodList = prods.map((p) => `${p.id} | ${p.title}${p.category ? ` [${p.category}]` : ""}`).join("\n")
   // Geçmiş turlar istemciden gelir → içerik enjeksiyonuna karşı: olası sahte rol
-  // etiketini ("Kullanıcı:"/"Depremzede:") baştan temizle ve içeriği yeni mesaj gibi
-  // üç tırnakla sınırla (tur sınırı taklidini engelle).
-  const stripLabel = (s: string) => s.replace(/^\s*(Kullanıcı|Depremzede)\s*:\s*/i, "")
+  // etiketini ("Kullanıcı:"/"Deprem Savaşçısı:") baştan temizle ve içeriği yeni mesaj
+  // gibi üç tırnakla sınırla (tur sınırı taklidini engelle).
+  // Eski "Depremzede" adı regex'te BİLEREK duruyor: istemcide duran eski sohbet
+  // geçmişleri hâlâ o etiketi taşıyor, temizlenmezse enjeksiyon yüzeyi açık kalır.
+  const stripLabel = (s: string) =>
+    s.replace(/^\s*(Kullanıcı|Deprem Savaşçısı|Depremzede)\s*:\s*/i, "")
   const hist = (input.history ?? [])
     .slice(-8)
-    .map((m) => `${m.role === "assistant" ? "Depremzede" : "Kullanıcı"}: """${stripLabel(String(m.content ?? ""))}"""`)
+    .map((m) => `${m.role === "assistant" ? "Deprem Savaşçısı" : "Kullanıcı"}: """${stripLabel(String(m.content ?? ""))}"""`)
     .join("\n")
 
   const userText =

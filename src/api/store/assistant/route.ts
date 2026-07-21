@@ -46,7 +46,7 @@ const NAV_OPTIONS: AgentNavOption[] = [
 /**
  * POST /store/assistant  { message, history?, path? }
  *
- * Maskot "Depremzede" — siteyi süren konuşkan AI asistanı. Kullanıcının mesajını
+ * Maskot "Deprem Savaşçısı" — siteyi süren konuşkan AI asistanı. Kullanıcının mesajını
  * sınıflandırır ve şunları döndürür: konuşma yanıtı (reply), gidilecek sayfa
  * (navigate_path), açılacak ürün (open_product_id), önerilen ürün/set kartları
  * (products) ve yapısal güvenlik durumunda uzman keşfi bayrağı.
