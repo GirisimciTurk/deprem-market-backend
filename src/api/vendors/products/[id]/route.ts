@@ -11,6 +11,8 @@ import { MARKETPLACE_MODULE } from "../../../../modules/marketplace"
 import { buildAttributeSpecs } from "../../../../lib/category-attributes"
 import { sanitizeShowcaseKeys } from "../../../../lib/showcase-categories"
 import { sanitizeVendorCertifications } from "../../_lib/certifications"
+import { notifyAdmins } from "../../../../lib/notify"
+import { dropMeta } from "../../../../lib/metadata"
 
 /** Ürünün bu satıcıya ait olup olmadığını doğrular. */
 async function ownsProduct(req: MedusaRequest, productId: string, sellerId: string) {
@@ -19,6 +21,7 @@ async function ownsProduct(req: MedusaRequest, productId: string, sellerId: stri
     entity: "product",
     fields: [
       "id",
+      "title",
       "status",
       "metadata",
       "seller.id",
@@ -275,6 +278,23 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     }
     metaChanged = true
   }
+
+  // Reddedilen ürün düzenlenince YENİDEN ONAYA girer: rejected → proposed.
+  // Aksi halde ürün kalıcı olarak "Reddedildi" kalır ve admin onay kuyruğuna
+  // (status=proposed) bir daha hiç düşmez → satıcı için çıkmaz sokak.
+  // Diğer durumlar (draft/published) satıcı düzenlemesiyle DEĞİŞMEZ.
+  const resubmitted = product.status === "rejected"
+  if (resubmitted) {
+    update.status = "proposed"
+    // Red gerekçesi geçmişe taşınır. dropMeta: Medusa metadata'yı MERGE ettiği
+    // için `delete` anahtarı SİLMEZ (bkz. src/lib/metadata.ts).
+    // Sıra önemli: last_rejection ataması dropMeta'dan ÖNCE olmalı.
+    if (metadata.rejection) {
+      metadata.last_rejection = metadata.rejection
+      dropMeta(metadata, "rejection")
+    }
+    metaChanged = true
+  }
   if (metaChanged) update.metadata = metadata
 
   const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
@@ -423,7 +443,18 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     }
   }
 
-  return res.json({ id: product.id, updated: true })
+  // Reddedilen ürün düzeltilip yeniden onaya girdiyse admini haberdar et
+  // (best-effort — bildirim yazımı başarısız olsa da güncelleme geçerli).
+  if (resubmitted) {
+    await notifyAdmins(req.scope, {
+      type: "product_approval",
+      title: `Reddedilen ürün düzeltildi: ${data.title ?? product.title ?? "Ürün"}`,
+      body: `${resolved.seller.name ?? "Satıcı"} ürünü güncelledi, yeniden onay bekliyor.`,
+      link: "/product-approvals",
+    })
+  }
+
+  return res.json({ id: product.id, updated: true, status: resubmitted ? "proposed" : product.status })
 }
 
 /** DELETE /vendors/products/:id — satıcı kendi ürününü siler. */

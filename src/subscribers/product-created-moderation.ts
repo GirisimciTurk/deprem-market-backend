@@ -2,6 +2,7 @@ import { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { updateProductsWorkflow } from "@medusajs/medusa/core-flows"
 import { reviewProduct, generateProductInfo, isLlmEnabled } from "../lib/llm"
+import { notifySeller } from "../lib/notify"
 
 /**
  * Satıcının eklediği "proposed" ürünü Gemini ile değerlendirir (asenkron) ve
@@ -105,6 +106,18 @@ export default async function productCreatedModerationHandler({
   else if (outcome.action === "auto_approve" && autopublish) nextStatus = "published"
   // auto_approve (autopublish kapalı) ve needs_review → "proposed" kalır
 
+  // Otomatik red de admin reddiyle AYNI sözleşmeyi yazmalı: gerekçe `metadata.rejection`
+  // altında durur. Aksi halde satıcı panelinde yalnız "Reddedildi" rozeti görünür,
+  // gerekçe kutusu (metadata.rejection.reason'a bakar) hiç açılmaz → satıcı neyi
+  // düzelteceğini bilemez. `ai_moderation.reason` satıcı arayüzünde okunmuyor.
+  if (nextStatus === "rejected") {
+    newMetadata.rejection = {
+      reason: outcome.reason.slice(0, 1000),
+      at: new Date().toISOString(),
+      by: "ai",
+    }
+  }
+
   await updateProductsWorkflow(container).run({
     input: {
       products: [
@@ -112,6 +125,24 @@ export default async function productCreatedModerationHandler({
       ],
     },
   })
+
+  // Satıcıya panel-içi bildirim (best-effort). Otomatik kararlar da bildirilir —
+  // aksi halde satıcı ürününün neden elendiğini hiç öğrenemiyordu.
+  if (nextStatus === "rejected") {
+    await notifySeller(container, product.seller.id, {
+      type: "product_rejected",
+      title: `Ürününüz reddedildi: ${product.title}`,
+      body: `Gerekçe: ${outcome.reason.slice(0, 1000)}\n\nÜrünü düzenleyip kaydettiğinizde yeniden onaya gönderilir.`,
+      link: `/products/${data.id}/edit`,
+    })
+  } else if (nextStatus === "published") {
+    await notifySeller(container, product.seller.id, {
+      type: "product_published",
+      title: `Ürününüz yayına alındı: ${product.title}`,
+      body: "Ürününüz mağazada satışa açıldı.",
+      link: `/products/${data.id}/edit`,
+    })
+  }
 
   logger.info(
     `[ai-moderation] ürün ${data.id}: ${outcome.action} (${outcome.verdict} %${Math.round(

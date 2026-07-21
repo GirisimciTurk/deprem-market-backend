@@ -3,6 +3,7 @@ import {
   updateProductsWorkflow,
   updateProductVariantsWorkflow,
 } from "@medusajs/medusa/core-flows"
+import { dropMeta } from "../../../lib/metadata"
 // KDV→native tax senkronu product.updated subscriber'ında (product-tax-sync) merkezi yapılır.
 
 /** Toplu yüklemede SKU eşleşince güncellenecek mevcut ürünün çözülmüş kimlikleri. */
@@ -11,6 +12,8 @@ export type UpdateTarget = {
   variantId?: string | null
   invItemId?: string | null
   metadata?: Record<string, unknown> | null
+  /** Mevcut ürün durumu — "rejected" ise güncelleme onu yeniden onaya sokar. */
+  status?: string | null
 }
 
 /** Tek-varyant güncelleme girdisi (toplu satırından üretilir). Verilmeyen alanlar değişmez. */
@@ -98,6 +101,22 @@ export async function updateVendorProduct(
     metadata.delivery_days = Math.max(0, Math.floor(Number(input.delivery_days)))
     metaChanged = true
   }
+  // Reddedilen ürün toplu yüklemeyle güncellenince de YENİDEN ONAYA girer.
+  // Tek-ürün ucundaki (vendors/products/[id]) davranışın aynısı — burada eksikti:
+  // ürün kalıcı "rejected" kalıp onay kuyruğuna (status=proposed) bir daha
+  // düşmüyordu, yani satıcı için çıkmaz sokaktı.
+  const resubmitted = target.status === "rejected"
+  if (resubmitted) {
+    update.status = "proposed"
+    // Sıra önemli: last_rejection ataması dropMeta'dan ÖNCE olmalı.
+    // dropMeta gerekli — Medusa metadata'yı MERGE ettiği için `delete` SİLMEZ
+    // (bkz. src/lib/metadata.ts).
+    if (metadata.rejection) {
+      metadata.last_rejection = metadata.rejection
+      dropMeta(metadata, "rejection")
+    }
+    metaChanged = true
+  }
   if (metaChanged) update.metadata = metadata
 
   await updateProductsWorkflow(scope).run({ input: { products: [update as any] } })
@@ -138,5 +157,5 @@ export async function updateVendorProduct(
     }
   }
 
-  return { id: target.productId, updated: true }
+  return { id: target.productId, updated: true, resubmitted }
 }

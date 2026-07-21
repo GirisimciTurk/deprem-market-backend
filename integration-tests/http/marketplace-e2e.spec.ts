@@ -137,6 +137,179 @@ medusaIntegrationTestRunner({
       })
     })
 
+    describe("Ürün reddi → düzeltme → yeniden onay (regresyon: rejected'ta sıkışma)", () => {
+      // ÖNEMLİ: kendi satıcısını kullanır. disableAutoTeardown ile veri testler
+      // arasında KORUNDUĞU için crudSatıcı'yı paylaşmak checkout/kargo/iade
+      // zincirlerini kirletiyordu (ürün sayısı/olaylar) → ayrı satıcı şart.
+      let approvalAdminToken: string
+      let approvalToken: string
+      let rejectedId: string
+
+      beforeAll(async () => {
+        approvalAdminToken = (
+          await createAdminWithToken(container, "onay-admin@test.local")
+        ).token
+
+        const mp = container.resolve(MARKETPLACE_MODULE)
+        const contracts = await mp.listSellerContracts({ is_active: true })
+        const r = await createSellerWithToken(container, {
+          handle: "onay-satici",
+          email: "onay-satici@test.local",
+          name: "Onay Satıcı",
+        })
+        approvalToken = r.token
+        for (const c of contracts as any[]) {
+          await mp.createSellerContractAcceptances({
+            seller_id: r.seller.id,
+            contract_id: c.id,
+            version: c.version,
+          })
+        }
+      })
+
+      it("satıcı ürün ekler → onay kuyruğunda (proposed)", async () => {
+        const res = await api.post(
+          "/vendors/products",
+          { title: "Reddedilecek Ürün", price: 100, stock: 5, sku: "REJ-1" },
+          authHeader(approvalToken)
+        )
+        expect([200, 201]).toContain(res.status)
+        rejectedId = (res.data.product || res.data).id
+
+        const queue = await api.get(
+          "/admin/product-approvals?status=proposed&limit=100",
+          authHeader(approvalAdminToken)
+        )
+        expect(queue.status).toEqual(200)
+        expect(queue.data.products.some((p: any) => p.id === rejectedId)).toBe(true)
+      })
+
+      it("admin gerekçeyle reddeder → gerekçe metadata'ya yazılır", async () => {
+        const res = await api.post(
+          `/admin/product-approvals/${rejectedId}`,
+          { action: "reject", reason: "Görseller bulanık." },
+          authHeader(approvalAdminToken)
+        )
+        expect(res.status).toEqual(200)
+        expect(res.data.status).toEqual("rejected")
+
+        const list = await api.get("/vendors/products?limit=100", authHeader(approvalToken))
+        const p = list.data.products.find((x: any) => x.id === rejectedId)
+        expect(p.status).toEqual("rejected")
+        expect(p.metadata.rejection.reason).toEqual("Görseller bulanık.")
+      })
+
+      it("satıcıya gerekçeli bildirim düşer", async () => {
+        const res = await api.get("/vendors/notifications?limit=50", authHeader(approvalToken))
+        expect(res.status).toEqual(200)
+        const n = res.data.notifications.find((x: any) => x.type === "product_rejected")
+        expect(n).toBeTruthy()
+        expect(n.body).toContain("Görseller bulanık.")
+      })
+
+      it("SATICI DÜZELTİNCE ürün yeniden onaya girer (eski bug: rejected kalıyordu)", async () => {
+        const upd = await api.post(
+          `/vendors/products/${rejectedId}`,
+          { title: "Düzeltilmiş Ürün", price: 120 },
+          authHeader(approvalToken)
+        )
+        expect(upd.status).toEqual(200)
+
+        const list = await api.get("/vendors/products?limit=100", authHeader(approvalToken))
+        const p = list.data.products.find((x: any) => x.id === rejectedId)
+        expect(p.status).toEqual("proposed")
+        // Aktif red GERÇEKTEN düşer (anahtar kalkar), gerekçe geçmişe taşınır.
+        // toBeFalsy YETMEZ: null da falsy'dir ve anahtarın asılı kalmasını gizler.
+        expect(p.metadata).not.toHaveProperty("rejection")
+        expect(p.metadata.last_rejection.reason).toEqual("Görseller bulanık.")
+      })
+
+      it("düzeltilen ürün admin onay kuyruğunda TEKRAR görünür", async () => {
+        const queue = await api.get(
+          "/admin/product-approvals?status=proposed&limit=100",
+          authHeader(approvalAdminToken)
+        )
+        expect(queue.status).toEqual(200)
+        expect(queue.data.products.some((p: any) => p.id === rejectedId)).toBe(true)
+      })
+
+      it("admin yayına alır → satıcı ürünü published", async () => {
+        const res = await api.post(
+          `/admin/product-approvals/${rejectedId}`,
+          { action: "publish" },
+          authHeader(approvalAdminToken)
+        )
+        expect(res.status).toEqual(200)
+        expect(res.data.status).toEqual("published")
+
+        const list = await api.get("/vendors/products?limit=100", authHeader(approvalToken))
+        const p = list.data.products.find((x: any) => x.id === rejectedId)
+        expect(p.status).toEqual("published")
+        // Yayına alınca red kaydı tamamen kalkar (anahtar silinir).
+        expect(p.metadata).not.toHaveProperty("rejection")
+      })
+
+      it("published ürünü satıcı düzenleyince onaya GERİ DÖNMEZ", async () => {
+        const upd = await api.post(
+          `/vendors/products/${rejectedId}`,
+          { price: 130 },
+          authHeader(approvalToken)
+        )
+        expect(upd.status).toEqual(200)
+        const list = await api.get("/vendors/products?limit=100", authHeader(approvalToken))
+        const p = list.data.products.find((x: any) => x.id === rejectedId)
+        expect(p.status).toEqual("published")
+      })
+
+      // Tek-ürün ucu düzeltilmişti ama TOPLU YÜKLEME yolu düzeltilmemişti:
+      // reddedilen ürün Excel/bulk ile güncellenince "rejected" kalıp onay
+      // kuyruğuna bir daha hiç düşmüyordu (satıcı için çıkmaz sokak).
+      it("TOPLU YÜKLEME ile güncellenen reddedilmiş ürün de yeniden onaya girer", async () => {
+        const created = await api.post(
+          "/vendors/products",
+          { title: "Toplu Red Ürünü", price: 100, stock: 5, sku: "REJ-BULK-1" },
+          authHeader(approvalToken)
+        )
+        expect([200, 201]).toContain(created.status)
+        const bulkId = (created.data.product || created.data).id
+
+        const rej = await api.post(
+          `/admin/product-approvals/${bulkId}`,
+          { action: "reject", reason: "Fiyat hatalı." },
+          authHeader(approvalAdminToken)
+        )
+        expect(rej.data.status).toEqual("rejected")
+
+        // Aynı SKU ile toplu yükleme → yeni ürün OLUŞTURMAZ, mevcudu günceller.
+        // x-forwarded-for ŞART: vendorBulkLimiter IP başına 5 istek/dk verir ve tüm
+        // testler 127.0.0.1'den gelir. Ayrı IP olmadan bu çağrı, aşağıdaki "Satıcı
+        // toplu ürün yükleme" bloğunun kotasını yiyip oradaki son testi 429'a düşürür.
+        const bulk = await api.post(
+          "/vendors/products/bulk",
+          { rows: [{ title: "Toplu Red Ürünü", sku: "REJ-BULK-1", price: 150, stock: 7 }] },
+          { headers: { ...authHeader(approvalToken).headers, "x-forwarded-for": "10.42.0.7" } }
+        )
+        expect([200, 201]).toContain(bulk.status)
+        expect(bulk.data.updated_count).toEqual(1)
+        expect(bulk.data.created_count).toEqual(0)
+        expect(bulk.data.resubmitted_count).toEqual(1)
+
+        const list = await api.get("/vendors/products?limit=100", authHeader(approvalToken))
+        const p = list.data.products.find((x: any) => x.id === bulkId)
+        expect(p.status).toEqual("proposed")
+        // Aktif red anahtarı GERÇEKTEN düşer, gerekçe geçmişe taşınır.
+        expect(p.metadata).not.toHaveProperty("rejection")
+        expect(p.metadata.last_rejection.reason).toEqual("Fiyat hatalı.")
+
+        // Ve admin onay kuyruğunda tekrar görünür.
+        const queue = await api.get(
+          "/admin/product-approvals?status=proposed&limit=100",
+          authHeader(approvalAdminToken)
+        )
+        expect(queue.data.products.some((x: any) => x.id === bulkId)).toBe(true)
+      })
+    })
+
     describe("Yasal sözleşmeler + hukuki delil (clickwrap)", () => {
       it("4 aktif zorunlu sözleşme kurulur", async () => {
         const mp = container.resolve(MARKETPLACE_MODULE)

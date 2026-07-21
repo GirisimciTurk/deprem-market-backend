@@ -22,6 +22,8 @@ export type NotifyType =
   | "question" // yeni ürün sorusu (satıcı)
   | "review" // yeni satıcı değerlendirmesi (satıcı)
   | "message" // yeni müşteri mesajı (satıcı)
+  | "product_rejected" // ürün reddedildi, gerekçeli (satıcı)
+  | "product_published" // ürün yayına alındı (satıcı)
   | "reseller_application" // yeni bayilik başvurusu (admin)
   | "expert_lead" // yeni uzman ön-kayıt / ilgi formu (admin)
   | "expert_request" // uzman profiline bırakılan hizmet talebi (admin)

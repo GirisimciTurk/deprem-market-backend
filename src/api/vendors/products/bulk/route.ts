@@ -160,7 +160,13 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   // "SKU varsa güncelle, yoksa ekle" için döngü ÖNCESİ tek seferde yüklenir.
   const skuMap = new Map<
     string,
-    { productId: string; variantId?: string | null; invItemId?: string | null; metadata?: Record<string, unknown> | null }
+    {
+      productId: string
+      variantId?: string | null
+      invItemId?: string | null
+      metadata?: Record<string, unknown> | null
+      status?: string | null
+    }
   >()
   try {
     const { data: sellerRows } = await query.graph({
@@ -177,6 +183,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         fields: [
           "id",
           "metadata",
+          // status: reddedilen ürün güncellenince yeniden onaya sokulur.
+          "status",
           "variants.id",
           "variants.sku",
           "variants.inventory_items.inventory_item_id",
@@ -191,6 +199,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
               variantId: v.id,
               invItemId: v.inventory_items?.[0]?.inventory_item_id ?? null,
               metadata: (p as any).metadata ?? {},
+              status: (p as any).status ?? null,
             })
           }
         }
@@ -247,6 +256,9 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const { singles, groups } = groupVariantRows(parsedRows)
 
   // ─── 1) Tek-varyant (bağımsız) satırları işle (mevcut mantık) ───
+  // Reddedilmişken güncellenip yeniden onaya giren ürün sayısı (admin bildirimi için).
+  let resubmittedCount = 0
+
   for (const r of singles) {
     const { brand_id, subtitle, category_ids, warns } = resolveBrandCategory(r)
     const images = splitList(r.images)
@@ -260,7 +272,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
     try {
       if (existing) {
-        await updateVendorProduct(req.scope, existing, {
+        const upd = await updateVendorProduct(req.scope, existing, {
           title: r.title,
           description: r.description ?? undefined,
           price: r.price,
@@ -281,6 +293,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
           brand_id,
           category_ids,
         })
+        if (upd.resubmitted) resubmittedCount++
         updated.push({
           index: r._index,
           id: existing.productId,
@@ -455,10 +468,21 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     })
   }
 
+  // Reddedilip düzeltilen ürünler de admin kuyruğuna geri döner — haber ver.
+  if (resubmittedCount > 0) {
+    await notifyAdmins(req.scope, {
+      type: "product_approval",
+      title: "Reddedilen ürünler düzeltildi",
+      body: `${resolved.seller.name}: ${resubmittedCount} reddedilmiş ürün toplu yüklemeyle güncellendi, yeniden onay bekliyor.`,
+      link: "/product-approvals",
+    })
+  }
+
   return res.status(created.length || updated.length ? 201 : 400).json({
     created,
     updated,
     errors,
+    resubmitted_count: resubmittedCount,
     total: parsed.data.rows.length,
     created_count: created.length,
     updated_count: updated.length,

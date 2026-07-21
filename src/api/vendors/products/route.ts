@@ -48,6 +48,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       "thumbnail",
       "handle",
       "created_at",
+      // Red gerekçesi (metadata.rejection) listede gösterilir.
+      "metadata",
       "variants.id",
       "variants.sku",
       "variants.barcode",
