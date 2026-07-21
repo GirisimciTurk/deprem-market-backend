@@ -66,11 +66,12 @@ export default async function orderCanceledHandler({
     logger.error(`[OrderCanceled] İade tutarı okunamadı: ${e?.message}`)
   }
 
-  await sendOrderCanceledEmail(container, orderId, totalRefundedMinor, currencyCode)
-
-  // Web push: giriş yapmış müşteriye "siparişiniz iptal edildi" bildirimi.
-  await sendOrderPush(container, orderId, "canceled")
-
+  // SIRA ÖNEMLİ: para-kritik iş ÖNCE, bildirimler SONRA.
+  // Önceden bildirimler önde ve try DIŞINDA await ediliyordu; mail/push bir hata
+  // fırlatırsa (SMTP kesintisi, push servisi) fonksiyon burada patlıyor ve
+  // seller_order'lar HİÇ iptal edilmiyordu → iptal edilmiş sipariş satıcının
+  // ödenecek bakiyesinde kalmaya devam ediyordu. Bildirim, ödemeyi bloklamamalı.
+  //
   // Sipariş iptal edildi → bu siparişin seller_order'larını "canceled" yap ve
   // kargo ücretini sıfırla (gönderim yok). Böylece iptal edilen sipariş satıcının
   // ödenecek bakiyesine/kazancına katkı vermez (net hesapları canceled'ı hariç tutar).
@@ -86,6 +87,19 @@ export default async function orderCanceledHandler({
     }
   } catch (e: any) {
     logger.error(`[OrderCanceled] seller_order iptali başarısız: ${e?.message}`)
+  }
+
+  // Bildirimler best-effort: buradaki bir hata yukarıdaki iptali geri almaz.
+  try {
+    await sendOrderCanceledEmail(container, orderId, totalRefundedMinor, currencyCode)
+  } catch (e: any) {
+    logger.error(`[OrderCanceled] iptal maili gönderilemedi: ${e?.message}`)
+  }
+  // Web push: giriş yapmış müşteriye "siparişiniz iptal edildi" bildirimi.
+  try {
+    await sendOrderPush(container, orderId, "canceled")
+  } catch (e: any) {
+    logger.error(`[OrderCanceled] iptal push'u gönderilemedi: ${e?.message}`)
   }
 }
 
