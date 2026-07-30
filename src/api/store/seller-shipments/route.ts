@@ -1,7 +1,6 @@
 import { AuthenticatedMedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
-import { MARKETPLACE_MODULE } from "../../../modules/marketplace"
-import MarketplaceModuleService from "../../../modules/marketplace/service"
+import { buildSellerShipments } from "../../../lib/seller-shipments"
 
 /**
  * GET /store/seller-shipments?order_id=...
@@ -24,32 +23,9 @@ export async function GET(req: AuthenticatedMedusaRequest, res: MedusaResponse) 
     return res.status(404).json({ message: "Sipariş bulunamadı." })
   }
 
-  const marketplace: MarketplaceModuleService = req.scope.resolve(MARKETPLACE_MODULE)
-  const sellerOrders = await marketplace.listSellerOrders({ order_id: orderId })
-
-  const shipments = await Promise.all(
-    sellerOrders.map(async (so: any) => {
-      let sellerName = ""
-      let sellerHandle = ""
-      try {
-        const seller = await marketplace.retrieveSeller(so.seller_id)
-        sellerName = (seller as any)?.name || ""
-        sellerHandle = (seller as any)?.handle || ""
-      } catch {
-        // satıcı silinmişse boş geç
-      }
-      return {
-        seller_order_id: so.id,
-        seller_name: sellerName,
-        seller_handle: sellerHandle,
-        fulfillment_status: so.fulfillment_status,
-        carrier: so.carrier,
-        tracking_number: so.tracking_number,
-        tracking_url: so.tracking_url,
-        items: so.items,
-      }
-    })
-  )
+  // Aşama türetmesi lib/seller-shipments.ts'te ortak — misafir takip ucu da aynı
+  // yardımcıyı kullanır, böylece iki ekran aynı aşamayı söyler.
+  const shipments = await buildSellerShipments(req.scope, orderId)
 
   return res.json({ shipments })
 }

@@ -583,6 +583,8 @@ medusaIntegrationTestRunner({
       let productId: string
       let orderId: string
       let sellerOrderId: string
+      // Misafir takip ucunu (sipariş no + e-posta) test edebilmek için.
+      let orderDisplayId: number
 
       beforeAll(() => {
         // Paylaşılan ticaret ortamını kullan (top-level beforeAll'da seed edildi)
@@ -618,6 +620,7 @@ medusaIntegrationTestRunner({
         expect(order).toBeTruthy()
         expect(order.items.length).toBeGreaterThan(0)
         orderId = order.id
+        orderDisplayId = order.display_id
       })
 
       it("sipariş satıcıya bölünür (seller_order) + fatura üretilir", async () => {
@@ -632,9 +635,70 @@ medusaIntegrationTestRunner({
         expect(sellerOrders.length).toBeGreaterThan(0)
         const so = sellerOrders[0]
         sellerOrderId = so.id
+
+        // Misafir takip ucu display_id ister; cart/complete yanıtı bu alanı her
+        // zaman taşımıyor → sipariş modülünden kesin değeri al.
+        const orderModule: any = container.resolve(Modules.ORDER)
+        const coreOrder: any = await orderModule.retrieveOrder(orderId)
+        orderDisplayId = coreOrder.display_id
+        expect(orderDisplayId).toBeTruthy()
         expect(Number(so.subtotal)).toBeGreaterThan(0)
         // komisyon (%10) hesaplandı mı
         expect(Number(so.commission_amount)).toBeGreaterThan(0)
+      })
+
+      it("yeni alt-sipariş 'Sipariş Alındı' aşamasındadır (satıcı henüz dokunmadı)", async () => {
+        const mp = container.resolve(MARKETPLACE_MODULE)
+        const so: any = await mp.retrieveSellerOrder(sellerOrderId)
+        expect(so.fulfillment_status).toEqual("pending")
+        expect(so.preparing_at).toBeFalsy()
+      })
+
+      it("satıcı 'Hazırlanıyor' işaretler → HAKEDİŞ SAATİ BAŞLAMAZ", async () => {
+        const res = await api.post(
+          `/vendors/orders/${sellerOrderId}/prepare`,
+          {},
+          authHeader(crudToken)
+        )
+        expect([200, 201]).toContain(res.status)
+        expect(res.data.stage).toEqual("preparing")
+
+        const mp = container.resolve(MARKETPLACE_MODULE)
+        const so: any = await mp.retrieveSellerOrder(sellerOrderId)
+        expect(so.preparing_at).toBeTruthy()
+        // KRİTİK: para ekseni hiç kıpırdamamalı.
+        expect(so.fulfillment_status).toEqual("pending")
+        expect(so.fulfilled_at).toBeFalsy()
+        expect(so.eligible_at).toBeFalsy()
+        expect(so.payout_status).toEqual("pending")
+      })
+
+      it("'Hazırlanıyor' geri alınabilir", async () => {
+        const del = await api.delete(
+          `/vendors/orders/${sellerOrderId}/prepare`,
+          authHeader(crudToken)
+        )
+        expect(del.status).toEqual(200)
+        const mp = container.resolve(MARKETPLACE_MODULE)
+        let so: any = await mp.retrieveSellerOrder(sellerOrderId)
+        expect(so.preparing_at).toBeFalsy()
+
+        // Tekrar işaretle — sonraki testler bu durumdan devam ediyor.
+        await api.post(`/vendors/orders/${sellerOrderId}/prepare`, {}, authHeader(crudToken))
+        so = await mp.retrieveSellerOrder(sellerOrderId)
+        expect(so.preparing_at).toBeTruthy()
+      })
+
+      it("misafir takip ucu 'Hazırlanıyor' aşamasını gösterir", async () => {
+        const res = await api.get(
+          `/store/order-tracking?display_id=${orderDisplayId}&email=musteri@test.local`,
+          pk
+        )
+        expect(res.status).toEqual(200)
+        expect(res.data.order.stage).toEqual("preparing")
+        expect(res.data.order.stage_label).toEqual("Hazırlanıyor")
+        expect(Array.isArray(res.data.order.seller_shipments)).toBe(true)
+        expect(res.data.order.seller_shipments.length).toBeGreaterThan(0)
       })
 
       it("satıcı siparişi kargolar → kargo bilgisi + hakediş zamanlanır", async () => {
@@ -651,6 +715,68 @@ medusaIntegrationTestRunner({
         expect(so.tracking_number).toEqual("YK-TEST-12345")
         expect(so.tracking_url).toBeTruthy() // cargo.ts şablonundan üretildi
         expect(so.eligible_at).toBeTruthy() // hakediş tarihi zamanlandı
+      })
+
+      it("KÖK HATA: kargolanan sipariş misafir takipte 'Kargoya Verildi' görünür", async () => {
+        // Düzeltmeden önce çekirdek order.fulfillment_status hiç ilerlemediği için
+        // müşteri satıcı kargolasa bile sonsuza kadar "Hazırlanıyor" görüyordu.
+        const res = await api.get(
+          `/store/order-tracking?display_id=${orderDisplayId}&email=musteri@test.local`,
+          pk
+        )
+        expect(res.status).toEqual(200)
+        expect(res.data.order.stage).toEqual("shipped")
+        expect(res.data.order.stage_label).toEqual("Kargoya Verildi")
+        const s = res.data.order.seller_shipments[0]
+        expect(s.stage).toEqual("shipped")
+        expect(s.tracking_number).toEqual("YK-TEST-12345")
+      })
+
+      it("aynı veriyle tekrar kargolamak hakediş saatini İLERİ KAYDIRMAZ", async () => {
+        const mp = container.resolve(MARKETPLACE_MODULE)
+        const before: any = await mp.retrieveSellerOrder(sellerOrderId)
+        await api.post(
+          `/vendors/orders/${sellerOrderId}/fulfill`,
+          { carrier: "yurtici", tracking_number: "YK-TEST-12345" },
+          authHeader(crudToken)
+        )
+        const after: any = await mp.retrieveSellerOrder(sellerOrderId)
+        expect(new Date(after.eligible_at).getTime()).toEqual(
+          new Date(before.eligible_at).getTime()
+        )
+      })
+
+      it("kargolanmış sipariş 'Hazırlanıyor'a çekilemez (400)", async () => {
+        const res = await api
+          .post(`/vendors/orders/${sellerOrderId}/prepare`, {}, authHeader(crudToken))
+          .catch((e: any) => e.response)
+        expect(res.status).toEqual(400)
+      })
+
+      it("kargolama geri alınabilir → hakediş saati TEMİZLENİR", async () => {
+        const del = await api.delete(
+          `/vendors/orders/${sellerOrderId}/fulfill`,
+          authHeader(crudToken)
+        )
+        expect(del.status).toEqual(200)
+
+        const mp = container.resolve(MARKETPLACE_MODULE)
+        const so: any = await mp.retrieveSellerOrder(sellerOrderId)
+        expect(so.fulfillment_status).toEqual("pending")
+        expect(so.fulfilled_at).toBeFalsy()
+        expect(so.eligible_at).toBeFalsy()
+        // "Hazırlanıyor" damgası korunur → aşama 2'ye döner, 1'e değil.
+        expect(so.preparing_at).toBeTruthy()
+
+        // Sonraki hakediş testi için tekrar kargola.
+        await api.post(
+          `/vendors/orders/${sellerOrderId}/fulfill`,
+          { carrier: "yurtici", tracking_number: "YK-TEST-12345" },
+          authHeader(crudToken)
+        )
+        const again: any = await mp.retrieveSellerOrder(sellerOrderId)
+        expect(again.fulfillment_status).toEqual("fulfilled")
+        expect(again.eligible_at).toBeTruthy()
       })
 
       it("hakediş süresi dolunca pending → eligible (settlement)", async () => {
