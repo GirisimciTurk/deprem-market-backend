@@ -36,6 +36,35 @@ export default async function initial_data_seed({
 
   const countries = ["tr", "gb", "de", "dk", "se", "fr", "es", "it"];
 
+  // ── İDEMPOTANS KAPISI ───────────────────────────────────────────────────────
+  // Bu script `medusa db:migrate` ile HER deploy'da çalışır ve içindeki tüm
+  // adımlar create'tir (upsert DEĞİL). Zaten tohumlanmış bir veritabanında
+  // çalışırsa yeni bir "Default Sales Channel", yeni bir publishable key ve
+  // YENİ BİR MAĞAZA yaratıp sonra bölge adımında
+  // "Countries ... are already assigned to a region" ile patlıyordu — yani her
+  // deploy üç kopya kayıt bırakıyordu.
+  //
+  // Bu üretimde uzun süre fark edilmedi çünkü deploy'daki `medusa db:migrate`
+  // link senkronu sırasında interaktif bir prompt'ta takılıp 180sn timeout ile
+  // ÖLDÜRÜLÜYORDU; migration script'leri hiç bu noktaya gelmiyordu. Prompt
+  // --execute-safe-links ile kaldırılınca script ilk kez sonuna kadar çalıştı
+  // ve sorun ortaya çıktı (2026-07-30 deploy'u).
+  //
+  // Bölge varlığı "kurulmuş sistem" göstergesi olarak kullanılıyor: ilk kurulum
+  // dışında her ortamda en az bir bölge vardır ve script zaten ilk olarak
+  // bölgede patlıyordu.
+  const regionModuleService = container.resolve(Modules.REGION);
+  const existingRegions = await regionModuleService.listRegions(
+    {},
+    { take: 1 }
+  );
+  if (existingRegions.length > 0) {
+    logger.info(
+      "initial-data-seed: sistem zaten kurulu (bölge mevcut), tohumlama atlandı."
+    );
+    return;
+  }
+
   logger.info("Seeding store data...");
   const {
     result: [defaultSalesChannel],
