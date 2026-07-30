@@ -717,6 +717,15 @@ medusaIntegrationTestRunner({
         expect(so.eligible_at).toBeTruthy() // hakediş tarihi zamanlandı
       })
 
+      it("/store/order-stages oturum ister ve order_ids'siz 400 döner", async () => {
+        // Sahiplik doğrulaması bu ucun tek güvenlik kapısı; oturumsuz erişim
+        // sipariş aşamalarını sızdırırdı.
+        const anon = await api
+          .get("/store/order-stages?order_ids=ord_x", pk)
+          .catch((e: any) => e.response)
+        expect(anon.status).toEqual(401)
+      })
+
       it("KÖK HATA: kargolanan sipariş misafir takipte 'Kargoya Verildi' görünür", async () => {
         // Düzeltmeden önce çekirdek order.fulfillment_status hiç ilerlemediği için
         // müşteri satıcı kargolasa bile sonsuza kadar "Hazırlanıyor" görüyordu.
