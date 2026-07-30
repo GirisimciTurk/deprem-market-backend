@@ -99,11 +99,28 @@ jobs:
           # legacy builder uyumlu; `# syntax` satırı legacy'de yok sayılır.
           DOCKER_BUILDKIT=0 docker compose build backend
           # NOT: prod build'de `medusa db:migrate` işini bitirince süreçten çıkmaz
-          # (Redis workflow-engine event loop'u açık tutar). timeout ile sınırla, kodu yoksay.
+          # (Redis workflow-engine event loop'u açık tutar). timeout ile sınırla.
           # KRİTİK: `</dev/null` ŞART — `docker compose run -T` stdin'e bağlı kalırsa
           # heredoc'un KALAN satırlarını (aşağıdaki force-recreate + ps) stdin'den YUTAR,
           # o komutlar hiç çalışmaz, container eski image'da kalır (deploy sessizce başarısız).
-          timeout 180 docker compose run --rm -T backend npx medusa db:migrate </dev/null || true
+          #
+          # --execute-safe-links: "Syncing links" adımı interaktif bir "hangi tabloları
+          # SİL" promptu açıyordu (2026-07-30 deploy'unda marketplace_seller_order_order
+          # listelendi) ve timeout'a kadar bekliyordu. Bu bayrak prompt'u atlar ve
+          # YALNIZ güvenli aksiyonları uygular; tablo silme gibi yıkıcı işler
+          # (--execute-all-links) hiç çalışmaz. `</dev/null` bir gün kaldırılsa bile
+          # artık yanlışlıkla tablo düşürülemez.
+          set +e
+          timeout 180 docker compose run --rm -T backend npx medusa db:migrate --execute-safe-links </dev/null
+          rc=$?
+          set -e
+          # 124 = timeout (yukarıdaki "süreçten çıkmıyor" davranışı, beklenen).
+          # Başka bir sıfırdan farklı kod GERÇEK migration hatasıdır: eskiden
+          # `|| true` ile yutuluyordu ve şema eskiyken yeni kod deploy ediliyordu.
+          if [ $rc -ne 0 ] && [ $rc -ne 124 ]; then
+            echo "::error::db:migrate başarısız (exit $rc) — deploy durduruldu, container eski sürümde kaldı."
+            exit 1
+          fi
           # --force-recreate: yeni image build edilse de compose container'ı "up-to-date"
           # sanıp ESKİ image'da bırakabiliyor (2026-06-13 deploy'unda yaşandı). Force ile
           # her zaman yeni image + güncel .env ile yeniden oluştur.
