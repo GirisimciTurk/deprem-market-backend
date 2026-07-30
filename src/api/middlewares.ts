@@ -287,6 +287,12 @@ export default defineMiddlewares({
       middlewares: [authenticate("customer", ["session", "bearer"])],
     },
     {
+      // Toplu aşama sorgusu da sahiplik gerektirir (her sipariş ayrı doğrulanır).
+      method: ["GET"],
+      matcher: "/store/order-stages",
+      middlewares: [authenticate("customer", ["session", "bearer"])],
+    },
+    {
       // İade talebi oluşturmak için giriş yapmış müşteri gerekir (sipariş sahipliği doğrulanır).
       method: ["POST"],
       matcher: "/store/return-requests",
