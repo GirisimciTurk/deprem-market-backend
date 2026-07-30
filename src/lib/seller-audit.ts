@@ -90,7 +90,19 @@ export function describeVendorAction(method: string, path: string): Described {
       if (sub === "reject") return def("return.reject", "İadeyi reddetti", "return")
       return def("return.update", "İade işlemi yaptı", "return")
     case "orders":
-      if (sub === "fulfill") return def("order.fulfill", "Siparişi kargoladı", "order")
+      // Aşama geçişleri metoda göre ayrılır: POST ileri, DELETE geri alma.
+      // Geri almalar denetim kaydında ayrı görünmeli — kargolamayı geri alma
+      // hakediş saatini de siliyor, iz bırakmadan geçmemeli.
+      if (sub === "fulfill") {
+        return M === "DELETE"
+          ? def("order.unfulfill", "Kargolamayı geri aldı", "order")
+          : def("order.fulfill", "Siparişi kargoladı", "order")
+      }
+      if (sub === "prepare") {
+        return M === "DELETE"
+          ? def("order.unprepare", "'Hazırlanıyor' işaretini kaldırdı", "order")
+          : def("order.prepare", "Siparişi hazırlamaya aldı", "order")
+      }
       return def("order.update", "Sipariş işlemi yaptı", "order")
     case "service-requests":
       return def("service_request.update", "Hizmet talebini güncelledi", "service_request")

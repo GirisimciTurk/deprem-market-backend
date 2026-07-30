@@ -83,6 +83,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   // SIFIRLAMA — yalnız kargo firması/takip bilgisini güncelle. Aksi halde tekrar
   // "kargolandı" basmak ödeme/hakediş tarihini ileri kaydırırdı (ödenmişte bile).
   const alreadyFulfilled = so.fulfillment_status === "fulfilled" && !!(so as any).fulfilled_at
+  const previousTracking = ((so as any).tracking_number || "").trim() || null
   const now = new Date()
   const patch: Record<string, unknown> = {
     id: so.id,
@@ -98,8 +99,17 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   }
   const updated = await marketplace.updateSellerOrders(patch as any)
 
-  // Takip numarası girildiyse müşteriye kargo maili gönder (hata akışı bozmasın).
-  if (trackingNumber) {
+  // Müşteriye kargo maili. İKİ DÜZELTME:
+  //  1) Eskiden yalnız `if (trackingNumber)` idi → satıcı takip numarası girmeden
+  //     kargolarsa müşteri HİÇBİR ŞEY duymuyordu. Artık ilk kargolamada takip no
+  //     olmasa da gidiyor (şablon takip no bloğunu kaldırabiliyor).
+  //  2) Eskiden takip numarasını düzeltmek için tekrar POST atınca müşteriye
+  //     İKİNCİ "Kargoya Verildi" maili gidiyordu. Artık yalnız ilk kargolamada
+  //     ya da takip numarası GERÇEKTEN değiştiyse gönderilir; aynı veriyle
+  //     tekrar basmak mail üretmez.
+  const trackingChanged = previousTracking !== trackingNumber
+  const shouldSendShipmentEmail = !alreadyFulfilled || trackingChanged
+  if (shouldSendShipmentEmail) {
     try {
       await sendSellerShipmentEmail(
         req.scope,
@@ -110,6 +120,77 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       req.scope.resolve("logger").error(`[fulfill] Kargo maili gönderilemedi: ${e?.message}`)
     }
   }
+
+  return res.json({ order: updated, carriers: CARRIERS })
+}
+
+/**
+ * Satıcının "Kargoya Verildi" işaretini geri alabileceği süre (saat).
+ * 0 = geri alma tamamen kapalı.
+ */
+function getUnshipWindowHours(): number {
+  const raw = Number(process.env.UNSHIP_WINDOW_HOURS)
+  return Number.isFinite(raw) && raw >= 0 ? raw : 24
+}
+
+/**
+ * DELETE /vendors/orders/:id/fulfill → "Kargoya Verildi"yi geri al.
+ *
+ * Yanlış basılan kargolamayı düzeltmek için. NEDEN SÖMÜRÜLEMEZ: geri alıp tekrar
+ * kargolamak `fulfilled_at`'i DAHA İLERİ bir tarihe yazar → `eligible_at` gecikir
+ * ve seller-scorecard'daki zamanında-kargolama oranı düşer. Yani işlem yalnız
+ * satıcının kendi aleyhine çalışır; hakedişi öne çekmek için kullanılamaz.
+ *
+ * Üç sert kapı: ödeme yapılmamış olmalı, kargolamadan bu yana pencere aşılmamış
+ * olmalı, ve alt-sipariş gerçekten kargolanmış olmalı.
+ *
+ * Müşteriye mail GÖNDERMEZ — "kargonuz geri alındı" bildirimi kafa karıştırır;
+ * satıcı zaten hemen ardından doğru bilgiyle tekrar kargolayacak.
+ */
+export async function DELETE(req: MedusaRequest, res: MedusaResponse) {
+  const resolved = await resolveSeller(req)
+  if (!resolved) return res.status(401).json({ message: "Yetkisiz." })
+
+  const marketplace: MarketplaceModuleService = req.scope.resolve(MARKETPLACE_MODULE)
+  const so = await marketplace.retrieveSellerOrder(req.params.id).catch(() => null)
+  if (!so || (so as any).seller_id !== resolved.seller.id) {
+    return res.status(404).json({ message: "Alt-sipariş bulunamadı." })
+  }
+
+  if (so.fulfillment_status !== "fulfilled") {
+    return res.status(400).json({ message: "Bu alt-sipariş kargoya verilmemiş." })
+  }
+
+  // Para çıktıysa aşama geri alınamaz — hakediş/transfer zinciri zaten işlemiş.
+  if ((so as any).payout_status !== "pending") {
+    return res.status(400).json({
+      message: "Ödemesi işleme girmiş siparişin kargolaması geri alınamaz. Destek ile görüşün.",
+    })
+  }
+
+  const windowHours = getUnshipWindowHours()
+  if (windowHours === 0) {
+    return res.status(400).json({ message: "Kargolamayı geri alma kapalı." })
+  }
+  const fulfilledAt = (so as any).fulfilled_at ? new Date((so as any).fulfilled_at) : null
+  if (fulfilledAt) {
+    const elapsedHours = (Date.now() - fulfilledAt.getTime()) / (60 * 60 * 1000)
+    if (elapsedHours > windowHours) {
+      return res.status(400).json({
+        message: `Kargolamayı geri alma süresi doldu (${windowHours} saat). Destek ile görüşün.`,
+      })
+    }
+  }
+
+  // fulfilled_at ve eligible_at TEMİZLENİR: aksi halde kargolanmamış bir sipariş
+  // hakediş saatini işletmeye devam ederdi. cargo_fee de sıfırlanmaz —
+  // tekrar kargolandığında carrier'a göre yeniden hesaplanıyor.
+  const updated = await marketplace.updateSellerOrders({
+    id: so.id,
+    fulfillment_status: "pending",
+    fulfilled_at: null,
+    eligible_at: null,
+  } as any)
 
   return res.json({ order: updated, carriers: CARRIERS })
 }

@@ -58,6 +58,17 @@ const SellerOrder = model.define("seller_order", {
   eligible_at: model.dateTime().nullable(),
   paid_at: model.dateTime().nullable(),
   fulfilled_at: model.dateTime().nullable(),
+  // Satıcının "Hazırlanıyor"a bastığı an. Müşteriye görünen 4 aşamalı takip
+  // çizelgesinin 2. adımını bu alan açar (bkz. lib/order-stage.ts).
+  //
+  // NEDEN ENUM'A DEĞER EKLENMEDİ: fulfillment_status'a "preparing" eklemek
+  // "Kargo bekleyen" sayaçlarını (vendors/stats, admin/sellers) sessizce
+  // yanlışlardı ve satıcı panelindeki Kargola butonu `=== 'pending'` koşuluna
+  // bağlı olduğu için Hazırlanıyor'a basan satıcı butonu kaybederdi. Aşama
+  // ekseni burada, para ekseni (fulfillment_status/eligible_at) ayrı duruyor.
+  //
+  // Bu alan hakediş saatine ASLA dokunmaz — onu yalnız fulfill ucu yazar.
+  preparing_at: model.dateTime().nullable(),
   // PayTR Pazaryeri transfer (escrow serbest bırakma) referansı — payout anında
   // submitPlatformTransfer ile üretilir; başarılı transferin trans_id'si.
   payout_trans_id: model.text().nullable(),
