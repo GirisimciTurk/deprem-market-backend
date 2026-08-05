@@ -184,7 +184,7 @@ export default async function testSellerReturns({ container }: { container: any 
       } as any,
     })
     if (locId && result?.id) {
-      try { await container.resolve(Modules.ORDER).updateReturns(result.id, { location_id: locId }) } catch {}
+      try { await container.resolve(Modules.ORDER).updateReturns(result.id, { location_id: locId }) } catch { /* logger bile yoksa sessiz geç */ }
     }
     createdReturns.push(result)
   }

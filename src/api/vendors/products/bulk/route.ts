@@ -350,7 +350,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   // Her grup = aynı başlık + beden/renk kombinasyonları → tek ürün, çoklu varyant.
   for (const [, groupRows] of groups) {
     const first = groupRows[0]
-    const groupIndices = groupRows.map((r) => r._index)
+    const _groupIndices = groupRows.map((r) => r._index)
     const { brand_id, subtitle, category_ids, warns } = resolveBrandCategory(first)
 
     // Seçenek (option) türlerini belirle: Beden var mı? Renk var mı?

@@ -63,7 +63,7 @@ medusaIntegrationTestRunner({
 
     describe("Ekip yönetimi", () => {
       let invitedId: string
-      let invitedResetLink: string
+      let _invitedResetLink: string
 
       it("sahip yeni çalışan davet eder (reset link döner)", async () => {
         const res = await api.post(
@@ -81,7 +81,7 @@ medusaIntegrationTestRunner({
         expect(res.data.seller_admin_id).toBeTruthy()
         expect(res.data.reset_link).toContain("/sifre-belirle")
         invitedId = res.data.seller_admin_id
-        invitedResetLink = res.data.reset_link
+        _invitedResetLink = res.data.reset_link
       })
 
       it("aynı e-posta ikinci kez davet edilince 409 (çakışma değil — aynı mağaza → günceller)", async () => {

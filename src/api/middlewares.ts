@@ -49,7 +49,7 @@ async function requireAdminRole(
   } catch (e: any) {
     // FAIL-CLOSED: yalnız ADMIN_ONLY uçlara uygulanır; rol çözümlenemezse güvenli
     // taraf REDDETMEKtir (deny-by-default).
-    try { req.scope.resolve("logger").error(`[requireAdminRole] reddedildi: ${e?.message}`) } catch {}
+    try { req.scope.resolve("logger").error(`[requireAdminRole] reddedildi: ${e?.message}`) } catch { /* logger bile yoksa sessiz geç */ }
     return res.status(403).json({ message: "Yetki doğrulanamadı, lütfen tekrar deneyin." })
   }
 }
@@ -110,7 +110,7 @@ async function vendorAccessControl(
   try {
     resolved = await resolveSeller(req)
   } catch (e: any) {
-    try { req.scope.resolve("logger").error(`[vendorAccessControl] çözümleme hatası: ${e?.message}`) } catch {}
+    try { req.scope.resolve("logger").error(`[vendorAccessControl] çözümleme hatası: ${e?.message}`) } catch { /* logger bile yoksa sessiz geç */ }
     return res.status(401).json({ message: "Yetkisiz." })
   }
   // Seller bağlamı yoksa (ör. henüz satıcısı olmayan kimlik) route kendi 401/404'ünü versin.

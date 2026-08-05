@@ -113,7 +113,7 @@ export async function DELETE(req: MedusaRequest, res: MedusaResponse) {
       }
     }
   } catch (e: any) {
-    try { req.scope.resolve("logger").warn(`[team:DELETE] auth bağı koparılamadı: ${e?.message}`) } catch {}
+    try { req.scope.resolve("logger").warn(`[team:DELETE] auth bağı koparılamadı: ${e?.message}`) } catch { /* logger bile yoksa sessiz geç */ }
   }
 
   await marketplace.deleteSellerAdmins(id)

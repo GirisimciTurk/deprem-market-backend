@@ -42,7 +42,7 @@ class PayTRProviderService extends AbstractPaymentProvider {
     super(container, options)
     try {
       this.logger_ = container.logger || container.resolve("logger")
-    } catch (e) {
+    } catch {
       this.logger_ = console
     }
   }

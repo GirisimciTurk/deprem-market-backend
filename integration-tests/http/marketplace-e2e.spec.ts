@@ -994,7 +994,7 @@ medusaIntegrationTestRunner({
     // ───────── Hizmet talebi ödeme/escrow/payout (D fazı) ─────────
     describe("Hizmet talebi ödeme/escrow/payout (D fazı)", () => {
       let adminToken: string
-      let custToken: string
+      let _custToken: string
       let custPk: { headers: Record<string, string> }
       let reqId: string
 
@@ -1619,7 +1619,7 @@ medusaIntegrationTestRunner({
     // erişememeli; ikinci müşteri C2, A'nın müşterisine ait talebe erişememeli. Tümü 404.
     describe("Çok-kiracılılık izolasyonu (IDOR guard'ları)", () => {
       let sellerBToken: string
-      let sellerBId: string
+      let _sellerBId: string
       let aProductId: string
       let aServiceReqId: string
       let aOwnerAdminId: string
@@ -1639,7 +1639,7 @@ medusaIntegrationTestRunner({
           name: "İzolasyon B",
         })
         sellerBToken = b.token
-        sellerBId = b.seller.id
+        _sellerBId = b.seller.id
 
         // A'nın (crud) çalışan id'si (modülden — team GET gate'siz olsa da en sağlamı)
         aOwnerAdminId = (await mp.listSellerAdmins({ seller_id: crudSellerId }))[0].id
