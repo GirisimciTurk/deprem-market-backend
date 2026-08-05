@@ -12,6 +12,11 @@ import {
   describeVendorAction,
   entityIdFromPath,
 } from "../lib/seller-audit"
+import {
+  rateLimitMiddleware,
+  authBurstLimiter,
+  authHourlyLimiter,
+} from "../lib/rate-limiter"
 
 /**
  * RBAC backend enforcement: 'staff' rolündeki admin kullanıcılarını hassas admin
@@ -218,6 +223,16 @@ const ADMIN_ONLY_MATCHERS = [
 
 export default defineMiddlewares({
   routes: [
+    {
+      // Brute-force / credential stuffing koruması. /auth/* uçları (müşteri ve
+      // satıcı girişi, kayıt, parola sıfırlama) Medusa ÇEKİRDEĞİNDEN gelir; route
+      // dosyalarına enforceRateLimit ekleyemediğimiz için limit middleware olarak
+      // takılıyor. Daha önce bu uçlarda hiçbir uygulama seviyesi limit yoktu.
+      // İki katman: dakikada 10 (patlama) + saatte 60 (yavaş deneme).
+      method: ["POST"],
+      matcher: "/auth/*",
+      middlewares: [rateLimitMiddleware(authBurstLimiter, authHourlyLimiter)],
+    },
     {
       // Google account-linking: accepts the Google *registration* token
       // (actor_id empty) so it can attach the identity to a customer.
