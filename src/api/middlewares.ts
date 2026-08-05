@@ -17,6 +17,7 @@ import {
   authBurstLimiter,
   authHourlyLimiter,
 } from "../lib/rate-limiter"
+import { errorMessage } from "../lib/errors"
 
 /**
  * RBAC backend enforcement: 'staff' rolündeki admin kullanıcılarını hassas admin
@@ -46,10 +47,10 @@ async function requireAdminRole(
       })
     }
     return next()
-  } catch (e: any) {
+  } catch (e) {
     // FAIL-CLOSED: yalnız ADMIN_ONLY uçlara uygulanır; rol çözümlenemezse güvenli
     // taraf REDDETMEKtir (deny-by-default).
-    try { req.scope.resolve("logger").error(`[requireAdminRole] reddedildi: ${e?.message}`) } catch { /* logger bile yoksa sessiz geç */ }
+    try { req.scope.resolve("logger").error(`[requireAdminRole] reddedildi: ${errorMessage(e)}`) } catch { /* logger bile yoksa sessiz geç */ }
     return res.status(403).json({ message: "Yetki doğrulanamadı, lütfen tekrar deneyin." })
   }
 }
@@ -109,8 +110,8 @@ async function vendorAccessControl(
   let resolved
   try {
     resolved = await resolveSeller(req)
-  } catch (e: any) {
-    try { req.scope.resolve("logger").error(`[vendorAccessControl] çözümleme hatası: ${e?.message}`) } catch { /* logger bile yoksa sessiz geç */ }
+  } catch (e) {
+    try { req.scope.resolve("logger").error(`[vendorAccessControl] çözümleme hatası: ${errorMessage(e)}`) } catch { /* logger bile yoksa sessiz geç */ }
     return res.status(401).json({ message: "Yetkisiz." })
   }
   // Seller bağlamı yoksa (ör. henüz satıcısı olmayan kimlik) route kendi 401/404'ünü versin.

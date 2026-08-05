@@ -3,6 +3,7 @@ import { MARKETPLACE_MODULE } from "../../../../../modules/marketplace"
 import MarketplaceModuleService from "../../../../../modules/marketplace/service"
 import { resolveSeller } from "../../../_lib/resolve-seller"
 import { rejectSellerReturn } from "../../../../../lib/seller-return-actions"
+import { errorMessage } from "../../../../../lib/errors"
 
 /**
  * POST /vendors/returns/:id/reject — satıcı iadeyi REDDEDER. Body: { reason? }
@@ -28,8 +29,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   try {
     await rejectSellerReturn(req.scope, sr, reason)
     return res.json({ rejected: true })
-  } catch (e: any) {
-    req.scope.resolve("logger").error(`[vendor-return-reject] ${id}: ${e?.message}`)
-    return res.status(400).json({ message: e?.message || "İade reddedilemedi." })
+  } catch (e) {
+    req.scope.resolve("logger").error(`[vendor-return-reject] ${id}: ${errorMessage(e)}`)
+    return res.status(400).json({ message: errorMessage(e, "İade reddedilemedi.") })
   }
 }

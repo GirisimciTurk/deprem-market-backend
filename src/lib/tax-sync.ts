@@ -1,4 +1,5 @@
 import { Modules } from "@medusajs/framework/utils"
+import { errorMessage } from "./errors"
 
 /**
  * Ürün başına KDV oranını NATIVE Medusa Tax Module'e senkronlar.
@@ -101,8 +102,8 @@ export async function syncProductTaxRate(
     await tax.createTaxRateRules([
       { tax_rate_id: bracketRateId, reference: "product", reference_id: productId },
     ])
-  } catch (e: any) {
-    logger?.error?.(`[tax-sync] ürün ${productId} KDV senkronu başarısız: ${e?.message}`)
+  } catch (e) {
+    logger?.error?.(`[tax-sync] ürün ${productId} KDV senkronu başarısız: ${errorMessage(e)}`)
   }
 }
 

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { orderTrackingLimiter, enforceRateLimit } from "../../../lib/rate-limiter";
 import { buildSellerShipments, shipmentsStage } from "../../../lib/seller-shipments";
 import { stageLabel } from "../../../lib/order-stage";
+import { errorMessage } from "../../../lib/errors"
 
 const querySchema = z.object({
   display_id: z.string().regex(/^\d+$/, "display_id must be a positive integer"),
@@ -69,11 +70,11 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     let seller_shipments: Awaited<ReturnType<typeof buildSellerShipments>> = [];
     try {
       seller_shipments = await buildSellerShipments(req.scope, order.id as string);
-    } catch (e: any) {
+    } catch (e) {
       // Aşama kırılımı alınamazsa takip ekranı yine çalışsın (eski davranışa düşer).
       req.scope
         .resolve("logger")
-        .error(`Order tracking seller shipments error: ${e?.message}`);
+        .error(`Order tracking seller shipments error: ${errorMessage(e)}`);
     }
 
     const stage = shipmentsStage(seller_shipments);
@@ -89,9 +90,9 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         stage_label: stage ? stageLabel(stage) : null,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     const logger = req.scope.resolve("logger");
-    logger.error(`Order tracking error: ${error?.message}`);
+    logger.error(`Order tracking error: ${errorMessage(error)}`);
     return res
       .status(500)
       .json({ message: "Sipariş sorgulanırken bir hata oluştu." });

@@ -1,5 +1,6 @@
 import { MedusaContainer } from "@medusajs/framework/types"
 import { RESELLER_MODULE } from "../modules/reseller"
+import { errorMessage } from "../lib/errors"
 
 /**
  * Saatlik temizlik işi: durumu "rejected" olan ve reddedilme tarihinin (rejected_at)
@@ -29,8 +30,8 @@ export default async function purgeRejectedApplicationsJob(container: MedusaCont
     logger.info(
       `[purge-rejected-applications] 24 saati dolmuş ${ids.length} reddedilmiş başvuru silindi.`
     )
-  } catch (e: any) {
-    logger.error(`[purge-rejected-applications] silme hatası: ${e?.message}`)
+  } catch (e) {
+    logger.error(`[purge-rejected-applications] silme hatası: ${errorMessage(e)}`)
   }
 }
 

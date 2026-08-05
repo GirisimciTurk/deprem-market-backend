@@ -6,6 +6,7 @@ import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
 import { createAndCompleteReturnOrderWorkflow } from "@medusajs/core-flows"
 import { returnRequestLimiter, enforceRateLimit } from "../../../lib/rate-limiter"
 import { groupRequestedItemsBySeller } from "../../../lib/process-return"
+import { errorMessage } from "../../../lib/errors"
 
 type ReturnItemInput = {
   id: string // order line item id
@@ -145,9 +146,9 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
 
     // Geriye dönük uyumluluk: tek return varsa `return` da döndür.
     return res.status(200).json({ returns: created, return: created[0] ?? null })
-  } catch (e: any) {
+  } catch (e) {
     return res
       .status(400)
-      .json({ message: e?.message || "İade talebi oluşturulamadı." })
+      .json({ message: errorMessage(e, "İade talebi oluşturulamadı.") })
   }
 }

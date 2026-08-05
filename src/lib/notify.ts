@@ -1,6 +1,7 @@
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { MARKETPLACE_MODULE } from "../modules/marketplace"
 import MarketplaceModuleService from "../modules/marketplace/service"
+import { errorMessage } from "./errors"
 
 /**
  * Uygulama-içi bildirim merkezi yardımcıları (panel zil ikonu için).
@@ -61,8 +62,8 @@ export async function notifySeller(
         link: n.link ?? null,
       },
     ] as any)
-  } catch (e: any) {
-    container.resolve("logger")?.error?.(`[notify] satıcı bildirimi başarısız: ${e?.message}`)
+  } catch (e) {
+    container.resolve("logger")?.error?.(`[notify] satıcı bildirimi başarısız: ${errorMessage(e)}`)
   }
 }
 
@@ -79,8 +80,8 @@ export async function notifyAdmins(container: any, n: NotifyInput): Promise<void
         link: n.link ?? null,
       },
     ] as any)
-  } catch (e: any) {
-    container.resolve("logger")?.error?.(`[notify] admin bildirimi başarısız: ${e?.message}`)
+  } catch (e) {
+    container.resolve("logger")?.error?.(`[notify] admin bildirimi başarısız: ${errorMessage(e)}`)
   }
 }
 

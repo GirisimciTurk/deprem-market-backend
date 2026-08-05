@@ -4,6 +4,7 @@ import { REVIEW_MODULE } from "../../../../modules/review"
 import ReviewModuleService from "../../../../modules/review/service"
 import { sendReviewPublishedEmail } from "../../../../lib/review-mail"
 import { recomputeProductRating } from "../../../../lib/recompute-product-rating"
+import { errorMessage } from "../../../../lib/errors"
 
 const updateSchema = z.object({
   status: z.enum(["pending", "approved", "spam"]),
@@ -34,8 +35,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   if (parsed.data.status === "approved" && (before as any)?.status !== "approved") {
     try {
       await sendReviewPublishedEmail(req.scope, review as any)
-    } catch (e: any) {
-      req.scope.resolve("logger").error(`[reviews] Yayın maili gönderilemedi: ${e?.message}`)
+    } catch (e) {
+      req.scope.resolve("logger").error(`[reviews] Yayın maili gönderilemedi: ${errorMessage(e)}`)
     }
   }
 

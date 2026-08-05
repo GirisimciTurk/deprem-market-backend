@@ -3,6 +3,7 @@ import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { sendOrderCanceledEmail } from "../lib/order-canceled-mail"
 import { sendOrderPush } from "../lib/order-push"
 import { MARKETPLACE_MODULE } from "../modules/marketplace"
+import { errorMessage } from "../lib/errors"
 
 /**
  * Sipariş iptal edildiğinde müşteriye "Siparişiniz İptal Edildi" e-postası gönderir
@@ -62,8 +63,8 @@ export default async function orderCanceledHandler({
     if (totalRefundedMinor > 0) {
       logger.info(`[OrderCanceled] Native iade tespit edildi: ${totalRefundedMinor} (sipariş ${orderId})`)
     }
-  } catch (e: any) {
-    logger.error(`[OrderCanceled] İade tutarı okunamadı: ${e?.message}`)
+  } catch (e) {
+    logger.error(`[OrderCanceled] İade tutarı okunamadı: ${errorMessage(e)}`)
   }
 
   // SIRA ÖNEMLİ: para-kritik iş ÖNCE, bildirimler SONRA.
@@ -85,21 +86,21 @@ export default async function orderCanceledHandler({
       )
       logger.info(`[OrderCanceled] ${toCancel.length} seller_order iptal edildi (sipariş ${orderId}).`)
     }
-  } catch (e: any) {
-    logger.error(`[OrderCanceled] seller_order iptali başarısız: ${e?.message}`)
+  } catch (e) {
+    logger.error(`[OrderCanceled] seller_order iptali başarısız: ${errorMessage(e)}`)
   }
 
   // Bildirimler best-effort: buradaki bir hata yukarıdaki iptali geri almaz.
   try {
     await sendOrderCanceledEmail(container, orderId, totalRefundedMinor, currencyCode)
-  } catch (e: any) {
-    logger.error(`[OrderCanceled] iptal maili gönderilemedi: ${e?.message}`)
+  } catch (e) {
+    logger.error(`[OrderCanceled] iptal maili gönderilemedi: ${errorMessage(e)}`)
   }
   // Web push: giriş yapmış müşteriye "siparişiniz iptal edildi" bildirimi.
   try {
     await sendOrderPush(container, orderId, "canceled")
-  } catch (e: any) {
-    logger.error(`[OrderCanceled] iptal push'u gönderilemedi: ${e?.message}`)
+  } catch (e) {
+    logger.error(`[OrderCanceled] iptal push'u gönderilemedi: ${errorMessage(e)}`)
   }
 }
 

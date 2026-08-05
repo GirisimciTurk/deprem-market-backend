@@ -1,6 +1,7 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { z } from "zod"
 import { refundOrderAmount, RefundError } from "../../../lib/refund-order"
+import { errorMessage } from "../../../lib/errors"
 
 const schema = z.object({
   order_id: z.string().min(1),
@@ -35,11 +36,11 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       return res.status(400).json({ message: msg })
     }
     return res.json({ success: true, payment_id: result.payment_id, refunded: result.refunded })
-  } catch (e: any) {
+  } catch (e) {
     if (e instanceof RefundError) {
-      return res.status(400).json({ message: e.message })
+      return res.status(400).json({ message: errorMessage(e) })
     }
-    logger.error(`Refund başarısız (${order_id}): ${e?.message}`)
-    return res.status(400).json({ message: e?.message || "İade başarısız." })
+    logger.error(`Refund başarısız (${order_id}): ${errorMessage(e)}`)
+    return res.status(400).json({ message: errorMessage(e, "İade başarısız.") })
   }
 }

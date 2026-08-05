@@ -1,5 +1,6 @@
 import { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
 import { routeReturnRequested } from "../lib/process-return"
+import { errorMessage } from "../lib/errors"
 
 type ReturnEvent = { return_id: string; order_id?: string }
 
@@ -15,8 +16,8 @@ export default async function returnRequestedSellerHandler({
   if (!data?.return_id) return
   try {
     await routeReturnRequested(container, data.return_id)
-  } catch (e: any) {
-    container.resolve("logger").error(`[return-requested-seller] ${data.return_id}: ${e.message}`)
+  } catch (e) {
+    container.resolve("logger").error(`[return-requested-seller] ${data.return_id}: ${errorMessage(e)}`)
   }
 }
 

@@ -5,6 +5,7 @@ import ExpertLeadModuleService from "../../../../../modules/expert_lead/service"
 import { expertRequestLimiter, enforceRateLimit } from "../../../../../lib/rate-limiter"
 import { notifyAdmins } from "../../../../../lib/notify"
 import { sendExpertRequestToProvider } from "../../../../../lib/expert-mail"
+import { errorMessage } from "../../../../../lib/errors"
 
 const schema = z.object({
   customer_name: z.string().min(1, "Ad soyad zorunlu").max(120),
@@ -74,10 +75,10 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       topic: d.topic,
       message: d.message,
     })
-  } catch (e: any) {
+  } catch (e) {
     req.scope
       .resolve("logger")
-      .error(`[expert-requests] Talep maili gönderilemedi: ${e?.message}`)
+      .error(`[expert-requests] Talep maili gönderilemedi: ${errorMessage(e)}`)
   }
 
   return res.status(201).json({ request: { id: request.id, status: request.status } })

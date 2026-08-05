@@ -11,6 +11,7 @@ import {
   PROVIDER_TYPES,
   specializationKeysFor,
 } from "../../../lib/expert-config"
+import { errorMessage } from "../../../lib/errors"
 
 const schema = z
   .object({
@@ -115,10 +116,10 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   // Onay maili (mail hatası başvuru akışını bozmasın).
   try {
     await sendExpertLeadConfirmation(req.scope, lead as any)
-  } catch (e: any) {
+  } catch (e) {
     req.scope
       .resolve("logger")
-      .error(`[expert-leads] Onay maili gönderilemedi: ${e?.message}`)
+      .error(`[expert-leads] Onay maili gönderilemedi: ${errorMessage(e)}`)
   }
 
   return res.status(201).json({ lead: { id: lead.id, status: lead.status } })

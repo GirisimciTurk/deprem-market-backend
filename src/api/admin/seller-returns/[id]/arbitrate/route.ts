@@ -5,6 +5,7 @@ import {
   acceptSellerReturn,
   upholdRejectSellerReturn,
 } from "../../../../../lib/seller-return-actions"
+import { errorMessage } from "../../../../../lib/errors"
 
 /**
  * POST /admin/seller-returns/:id/arbitrate  { action: "accept" | "uphold_reject" }
@@ -46,8 +47,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       } as any)
     }
     return res.json({ upheld: true })
-  } catch (e: any) {
-    req.scope.resolve("logger").error(`[arbitrate:${action}] ${id}: ${e?.message}`)
-    return res.status(400).json({ message: e?.message || "İşlem başarısız." })
+  } catch (e) {
+    req.scope.resolve("logger").error(`[arbitrate:${action}] ${id}: ${errorMessage(e)}`)
+    return res.status(400).json({ message: errorMessage(e, "İşlem başarısız.") })
   }
 }

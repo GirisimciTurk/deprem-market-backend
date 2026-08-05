@@ -7,6 +7,7 @@ import {
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3"
 import path from "path"
 import sharp from "sharp"
+import { errorMessage } from "../../../../lib/errors"
 
 type WebpS3Options = {
   file_url: string
@@ -62,9 +63,9 @@ class WebpS3FileProviderService extends AbstractFileProviderService {
         buffer = (await sharp(buffer).webp({ quality: 85 }).toBuffer()) as any
         filename = file.filename.replace(/\.[^/.]+$/, "") + ".webp"
         contentType = "image/webp"
-      } catch (err: any) {
+      } catch (err) {
         throw new Error(
-          `Görsel WebP'e dönüştürülemedi: ${err.message} | Failed to convert image to WebP: ${err.message}`
+          `Görsel WebP'e dönüştürülemedi: ${errorMessage(err)} | Failed to convert image to WebP: ${errorMessage(err)}`
         )
       }
     }

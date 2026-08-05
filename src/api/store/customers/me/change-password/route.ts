@@ -1,6 +1,7 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
 import { z } from "zod"
+import { errorMessage } from "../../../../../lib/errors"
 
 const schema = z.object({
   old_password: z.string().min(1, "Mevcut şifre gerekli"),
@@ -51,8 +52,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       entity_id: email,
       password: parsed.data.new_password,
     })
-  } catch (e: any) {
-    req.scope.resolve("logger").error(`[change-password] ${e?.message}`)
+  } catch (e) {
+    req.scope.resolve("logger").error(`[change-password] ${errorMessage(e)}`)
     return res.status(500).json({ message: "Şifre güncellenemedi." })
   }
 

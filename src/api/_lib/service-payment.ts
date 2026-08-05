@@ -1,5 +1,6 @@
 import { getPayTRConfig } from "../../lib/paytr-config"
 import { buildGetTokenHash } from "../../lib/paytr-hash"
+import { errorMessage } from "../../lib/errors"
 
 /**
  * Hizmet talebi (keşifli kurulum) ÖDEME / ESCROW yardımcıları (D fazı).
@@ -280,7 +281,7 @@ export async function buildServicePaymentToken(p: {
       return { ok: false, error: json.reason || "PayTR token alınamadı." }
     }
     return { ok: true, token: json.token }
-  } catch (e: any) {
-    return { ok: false, error: e?.message || "PayTR token oluşturulamadı." }
+  } catch (e) {
+    return { ok: false, error: errorMessage(e, "PayTR token oluşturulamadı.") }
   }
 }

@@ -4,6 +4,7 @@ import { z } from "zod"
 import { getPayTRConfig } from "../../../../lib/paytr-config"
 import { buildGetTokenHash } from "../../../../lib/paytr-hash"
 import { hashLimiter, enforceRateLimit } from "../../../../lib/rate-limiter"
+import { errorMessage } from "../../../../lib/errors"
 
 const bodySchema = z.object({
   cart_id: z.string().min(1).max(128),
@@ -164,13 +165,13 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
           provider: "paytr",
         },
       } as any)
-    } catch (e: any) {
-      logger.warn(`PayTR token: oturum verisi güncellenemedi: ${e?.message}`)
+    } catch (e) {
+      logger.warn(`PayTR token: oturum verisi güncellenemedi: ${errorMessage(e)}`)
     }
 
     return res.status(200).json({ success: true, iframe_token: json.token })
-  } catch (e: any) {
-    logger.error(`PayTR get-token hata: ${e?.message}`)
+  } catch (e) {
+    logger.error(`PayTR get-token hata: ${errorMessage(e)}`)
     return res
       .status(500)
       .json({ success: false, error: "PayTR token oluşturulamadı." })

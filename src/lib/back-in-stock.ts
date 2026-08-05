@@ -2,6 +2,7 @@ import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { PUSH_MODULE } from "../modules/push"
 import type PushModuleService from "../modules/push/service"
 import { sendToSubscriptions, isPushConfigured } from "./web-push"
+import { errorMessage } from "./errors"
 
 /**
  * Bir envanter kalemi 0 → pozitife geçtiğinde ("stoğa geldi"), o kaleme bağlı
@@ -92,7 +93,7 @@ export async function notifyBackInStock(
     logger?.info(
       `[BackInStock] ${alerts.length} stok uyarısı gönderildi/temizlendi (kalem ${inventoryItemId}).`
     )
-  } catch (err: any) {
-    logger?.warn?.(`[BackInStock] Bildirim hatası: ${err?.message}`)
+  } catch (err) {
+    logger?.warn?.(`[BackInStock] Bildirim hatası: ${errorMessage(err)}`)
   }
 }
