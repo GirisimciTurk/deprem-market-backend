@@ -41,6 +41,17 @@ type StoredSubscription = {
 let vapidConfigured: boolean | null = null
 
 /** VAPID'i bir kez kurar; anahtar yoksa false döner (gönderim atlanır). */
+/**
+ * Push gönderimi yapılandırılmış mı (VAPID anahtarları var mı)?
+ *
+ * Çağıranların "gönderilemedi" ile "hiç denenmedi"yi ayırt edebilmesi için dışa
+ * açık: ör. stok uyarıları, VAPID yokken kayıtları SİLMEMELİ — yoksa anahtarlar
+ * kurulana kadar biriken tüm "haber ver" talepleri sessizce kaybolur.
+ */
+export function isPushConfigured(): boolean {
+  return ensureVapid()
+}
+
 function ensureVapid(): boolean {
   if (vapidConfigured !== null) {
     return vapidConfigured

@@ -1,7 +1,7 @@
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { PUSH_MODULE } from "../modules/push"
 import type PushModuleService from "../modules/push/service"
-import { sendToSubscriptions } from "./web-push"
+import { sendToSubscriptions, isPushConfigured } from "./web-push"
 
 /**
  * Bir envanter kalemi 0 → pozitife geçtiğinde ("stoğa geldi"), o kaleme bağlı
@@ -9,8 +9,12 @@ import { sendToSubscriptions } from "./web-push"
  * gönderilen kayıtları temizler.
  *
  * ASLA throw etmez — stok güncelleme akışı (sipariş/iade/manuel) bundan
- * etkilenmemeli. VAPID yoksa sendToSubscriptions sessizce atlar; yine de
- * kayıtları temizleriz (tekrar tetiklenmesin).
+ * etkilenmemeli.
+ *
+ * VAPID anahtarları tanımlı değilse kayıtlar SİLİNMEZ ve fonksiyon erkenden
+ * çıkar. Önceden bu durumda da temizlik yapılıyordu: push atlanıyor ama "haber
+ * ver" talepleri siliniyordu, yani anahtarlar kurulana kadar biriken tüm
+ * müşteri talepleri geri dönülemez şekilde kayboluyordu.
  */
 export async function notifyBackInStock(
   container: any,
@@ -38,6 +42,15 @@ export async function notifyBackInStock(
       { take: null }
     )
     if (!alerts.length) return
+
+    // Gönderim mümkün değilse kayıtlara DOKUNMA — ürün bir dahaki sefer stoğa
+    // girdiğinde (ya da anahtarlar kurulduktan sonra) yeniden denenebilsin.
+    if (!isPushConfigured()) {
+      logger?.warn?.(
+        `[BackInStock] VAPID anahtarları yok — ${alerts.length} stok uyarısı KORUNDU, gönderim atlandı (kalem ${inventoryItemId}).`
+      )
+      return
+    }
 
     // Gönderim için endpoint → abonelik (p256dh/auth) eşlemesi gerekir.
     const endpoints = [...new Set(alerts.map((a: any) => a.endpoint))]
