@@ -47,7 +47,24 @@ jobs:
         with:
           node-version: "20"
           cache: npm
+      # node_modules'ü DOĞRUDAN önbelleğe al. `cache: npm` (yukarıda) yalnız
+      # ~/.npm indirme önbelleğini tutar; buradaki 32 dakikanın büyük kısmı indirme
+      # DEĞİL, kaynaktan derleme (canvas, bcrypt, sharp — 1540 paketlik ağaç).
+      # Ölçüm: 43 dakikalık koşunun 32,4 dakikası bu adımdı; testler 1,6 dakika.
+      # Önbellek isabetinde kurulum tamamen atlanır.
+      #
+      # Anahtar package-lock.json'ın hash'i: lockfile değişmedikçe isabet eder,
+      # değiştiğinde otomatik olarak yeniden kurulur. restore-keys BİLEREK yok —
+      # kısmi geri yükleme eksik/eski paketlerle sessizce bozuk bir ağaç bırakır.
+      - name: node_modules önbelleği
+        id: nm-cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: nm-${{ runner.os }}-${{ runner.arch }}-node20-${{ hashFiles('package-lock.json') }}
+
       - name: Bağımlılıkları kur
+        if: steps.nm-cache.outputs.cache-hit != 'true'
         run: npm ci
       - name: Birim testleri
         run: npm run test:unit
