@@ -3,6 +3,7 @@ import { MARKETPLACE_MODULE } from "../modules/marketplace"
 import MarketplaceModuleService from "../modules/marketplace/service"
 import { notifySeller } from "./notify"
 import { readCargoTariff, computeCargoFee, unitDesi, pickDims, DimInput } from "./cargo-fee"
+import { errorMessage } from "./errors"
 
 /**
  * Bir müşteri siparişini satıcı bazında alt-siparişlere (seller_order) böler ve
@@ -33,8 +34,8 @@ export async function splitOrder(container: any, orderId: string): Promise<numbe
       // öncesi ham tutar yansır → müşterinin ödediğinden fazla).
       relations: ["items", "items.adjustments", "shipping_address"],
     })
-  } catch (err: any) {
-    logger.error(`[splitOrder] Sipariş bulunamadı: ${orderId} (${err.message})`)
+  } catch (err) {
+    logger.error(`[splitOrder] Sipariş bulunamadı: ${orderId} (${errorMessage(err)})`)
     return 0
   }
 
@@ -193,10 +194,10 @@ export async function splitOrder(container: any, orderId: string): Promise<numbe
 
   try {
     await marketplace.createSellerOrders(sellerOrders as any)
-  } catch (e: any) {
+  } catch (e) {
     // (order_id, seller_id) unique index → eşzamanlı ikinci order.placed çift bölmeyi
     // burada yakalar (app-içi kontrol race'i kaçırırsa DB son savunma hattı).
-    if (/unique|duplicate|UQ_seller_order/i.test(e?.message || "")) {
+    if (/unique|duplicate|UQ_seller_order/i.test(errorMessage(e, ""))) {
       logger.warn(`[splitOrder] ${orderId} eşzamanlı çift bölme engellendi (unique).`)
       return 0
     }

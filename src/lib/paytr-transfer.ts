@@ -4,6 +4,7 @@ import {
   buildReturnedTransfersHash,
   buildResendHash,
 } from "./paytr-hash"
+import { errorMessage } from "./errors"
 
 /**
  * PayTR Pazaryeri — para aktarma (escrow serbest bırakma) yardımcıları.
@@ -89,8 +90,8 @@ export async function submitPlatformTransfer(p: {
       return { status: "success", trans_id: p.transId, raw: json }
     }
     return { status: "error", reason: json.reason || json.err_msg || "Bilinmeyen hata", raw: json }
-  } catch (e: any) {
-    return { status: "error", reason: e?.message || "Ağ hatası", raw: null }
+  } catch (e) {
+    return { status: "error", reason: errorMessage(e, "Ağ hatası"), raw: null }
   }
 }
 
@@ -125,8 +126,8 @@ export async function listReturnedTransfers(p: {
     const json: any = await res.json().catch(() => ({}))
     if (json.status === "success") return { status: "success", returns: json.returns ?? [] }
     return { status: "error", reason: json.reason || json.err_msg || "Bilinmeyen hata" }
-  } catch (e: any) {
-    return { status: "error", reason: e?.message || "Ağ hatası" }
+  } catch (e) {
+    return { status: "error", reason: errorMessage(e, "Ağ hatası") }
   }
 }
 
@@ -159,7 +160,7 @@ export async function resendReturnedPayment(p: {
     const json: any = await res.json().catch(() => ({}))
     if (json.status === "success") return { status: "success" }
     return { status: "error", reason: json.reason || json.err_msg || "Bilinmeyen hata" }
-  } catch (e: any) {
-    return { status: "error", reason: e?.message || "Ağ hatası" }
+  } catch (e) {
+    return { status: "error", reason: errorMessage(e, "Ağ hatası") }
   }
 }

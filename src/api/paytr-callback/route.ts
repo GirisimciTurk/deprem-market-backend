@@ -17,6 +17,7 @@ import {
   phaseAmount,
 } from "../_lib/service-payment"
 import { sendServicePaymentEmail } from "../../lib/service-mail"
+import { errorMessage } from "../../lib/errors"
 
 /**
  * POST /paytr-callback  (PayTR sunucu-sunucu bildirimi, x-www-form-urlencoded)
@@ -110,8 +111,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         sendServicePaymentEmail(req.scope, after ?? r, decoded.phase, amount).catch(() => {})
       }
       return res.status(200).send("OK")
-    } catch (e: any) {
-      logger.error(`PayTR Callback: hizmet ödemesi işlenemedi (${merchantOid}): ${e?.message}`)
+    } catch (e) {
+      logger.error(`PayTR Callback: hizmet ödemesi işlenemedi (${merchantOid}): ${errorMessage(e)}`)
       return res.status(200).send("OK")
     }
   }
@@ -178,17 +179,17 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         await orderModule.updateOrders([
           { id: result.id, metadata: { paytr_merchant_oid: merchantOid } },
         ])
-      } catch (e: any) {
-        logger.warn(`PayTR Callback: sipariş metadata yazılamadı: ${e?.message}`)
+      } catch (e) {
+        logger.warn(`PayTR Callback: sipariş metadata yazılamadı: ${errorMessage(e)}`)
       }
-    } catch (e: any) {
-      logger.error(`PayTR Callback: sepet tamamlanamadı (${cartId}): ${e?.message}`)
+    } catch (e) {
+      logger.error(`PayTR Callback: sepet tamamlanamadı (${cartId}): ${errorMessage(e)}`)
       // Yine de OK döneriz; sipariş zaten tamamlanmış olabilir.
     }
 
     return res.status(200).send("OK")
-  } catch (e: any) {
-    logger.error(`PayTR Callback: işlenemedi (oid: ${merchantOid}): ${e?.message}`)
+  } catch (e) {
+    logger.error(`PayTR Callback: işlenemedi (oid: ${merchantOid}): ${errorMessage(e)}`)
     return res.status(500).send("ERROR")
   }
 }

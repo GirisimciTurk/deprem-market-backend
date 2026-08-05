@@ -2,6 +2,7 @@ import { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
 import { Modules } from "@medusajs/framework/utils"
 import { ANALYTICS_MODULE } from "../modules/analytics"
 import type AnalyticsModuleService from "../modules/analytics/service"
+import { errorMessage } from "../lib/errors"
 
 /**
  * order.placed → tek bir güvenilir `purchase` davranış olayı yazar (ciro/funnel
@@ -23,8 +24,8 @@ export default async function analyticsOrderPlaced({
   let order: any
   try {
     order = await orderModuleService.retrieveOrder(orderId, { relations: ["items"] })
-  } catch (err: any) {
-    logger.error(`[analytics] order not found: ${orderId} (${err?.message})`)
+  } catch (err) {
+    logger.error(`[analytics] order not found: ${orderId} (${errorMessage(err)})`)
     return
   }
 

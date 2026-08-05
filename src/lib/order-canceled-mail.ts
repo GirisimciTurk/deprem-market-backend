@@ -1,6 +1,7 @@
 import { Modules } from "@medusajs/framework/utils"
 import { sendMail } from "./mailer"
 import { writeEmailPreview } from "./email-preview"
+import { errorMessage } from "./errors"
 
 /**
  * Sipariş iptal edildiğinde müşteriye "Siparişiniz İptal Edildi" e-postası gönderir.
@@ -22,8 +23,8 @@ export async function sendOrderCanceledEmail(
   try {
     // retrieveOrder quantity/unit_price'ı güvenilir verir (bkz. cargo-mail notu).
     order = await orderModule.retrieveOrder(orderId, { relations: ["items"] })
-  } catch (err: any) {
-    logger.error(`[OrderCanceledMail] Sipariş okunamadı: ${err.message}`)
+  } catch (err) {
+    logger.error(`[OrderCanceledMail] Sipariş okunamadı: ${errorMessage(err)}`)
     return
   }
 

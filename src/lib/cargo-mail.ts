@@ -3,6 +3,7 @@ import { getTrackingUrl, resolveCarrier } from "./cargo"
 import { sendMail } from "./mailer"
 import { writeEmailPreview } from "./email-preview"
 import { sendOrderPush } from "./order-push"
+import { errorMessage } from "./errors"
 
 export type CargoStatus = "shipped" | "delivered"
 
@@ -91,8 +92,8 @@ export async function sendCargoStatusEmail(
       relations: ["items"],
     })
     orderItems = fullOrder.items || []
-  } catch (err: any) {
-    logger.error(`[CargoMail:${status}] Sipariş kalemleri okunamadı: ${err.message}`)
+  } catch (err) {
+    logger.error(`[CargoMail:${status}] Sipariş kalemleri okunamadı: ${errorMessage(err)}`)
   }
 
   const copy = COPY[status]

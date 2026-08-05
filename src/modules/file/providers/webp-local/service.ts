@@ -3,6 +3,7 @@ import { ProviderUploadFileDTO, ProviderFileResultDTO, ProviderDeleteFileDTO } f
 import fs from "fs"
 import path from "path"
 import sharp from "sharp"
+import { errorMessage } from "../../../../lib/errors"
 
 class WebpLocalFileProviderService extends AbstractFileProviderService {
   static identifier = "webp-local"
@@ -28,8 +29,8 @@ class WebpLocalFileProviderService extends AbstractFileProviderService {
       try {
         buffer = (await sharp(buffer).webp({ quality: 85 }).toBuffer()) as any
         filename = file.filename.replace(/\.[^/.]+$/, "") + ".webp"
-      } catch (err: any) {
-        throw new Error(`Görsel WebP formatına dönüştürülemedi: ${err.message} | Failed to convert image to WebP: ${err.message}`)
+      } catch (err) {
+        throw new Error(`Görsel WebP formatına dönüştürülemedi: ${errorMessage(err)} | Failed to convert image to WebP: ${errorMessage(err)}`)
       }
     }
 

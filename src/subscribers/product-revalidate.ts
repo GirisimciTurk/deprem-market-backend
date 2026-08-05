@@ -1,5 +1,6 @@
 import { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
+import { errorMessage } from "../lib/errors"
 
 /**
  * Bir ürün oluşturulduğunda/güncellendiğinde (satıcı düzenlemesi, admin onayı, fiyat
@@ -24,8 +25,8 @@ export default async function productRevalidateHandler({ container }: Subscriber
     if (!res.ok) {
       logger.warn(`[product-revalidate] storefront ${res.status} döndü`)
     }
-  } catch (e: any) {
-    logger.warn(`[product-revalidate] storefront tazelenemedi: ${e?.message}`)
+  } catch (e) {
+    logger.warn(`[product-revalidate] storefront tazelenemedi: ${errorMessage(e)}`)
   }
 }
 

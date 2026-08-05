@@ -19,6 +19,7 @@ import {
   LINE_SHIP_META_KEY,
   LineShipMeta,
 } from "../../../../lib/cart-cargo"
+import { errorMessage } from "../../../../lib/errors"
 
 type InjectedDependencies = {
   logger: Logger
@@ -164,10 +165,10 @@ class YurticiKargoFulfillmentProviderService extends AbstractFulfillmentProvider
           data: { carrier: "yurtici", shipment_id: result.shipmentId },
           labels: result.labels,
         }
-      } catch (e: any) {
+      } catch (e) {
         // API başarısız → manuel moda düş, akışı bloklama.
         this.logger_.warn(
-          `[yurtici-kargo] Otomatik gönderi oluşturulamadı, manuel moda düşülüyor: ${e?.message}`
+          `[yurtici-kargo] Otomatik gönderi oluşturulamadı, manuel moda düşülüyor: ${errorMessage(e)}`
         )
       }
     }
@@ -184,9 +185,9 @@ class YurticiKargoFulfillmentProviderService extends AbstractFulfillmentProvider
     if (this.client_ && shipmentId) {
       try {
         await this.client_.cancelShipment(String(shipmentId))
-      } catch (e: any) {
+      } catch (e) {
         this.logger_.warn(
-          `[yurtici-kargo] Yurtiçi gönderi iptali başarısız: ${e?.message}`
+          `[yurtici-kargo] Yurtiçi gönderi iptali başarısız: ${errorMessage(e)}`
         )
       }
     }

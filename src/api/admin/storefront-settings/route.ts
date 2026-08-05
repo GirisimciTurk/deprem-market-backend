@@ -1,12 +1,13 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import { errorMessage } from "../../../lib/errors"
 
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const service = req.scope.resolve("storefrontSettings") as any
   try {
     const settings = await service.listStorefrontSettings()
     res.json({ settings })
-  } catch (error: any) {
-    res.status(500).json({ message: error.message || "Failed to fetch settings" })
+  } catch (error) {
+    res.status(500).json({ message: errorMessage(error, "Failed to fetch settings") })
   }
 }
 
@@ -35,7 +36,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     }
 
     res.json({ setting })
-  } catch (error: any) {
-    res.status(500).json({ message: error.message || "Failed to save setting" })
+  } catch (error) {
+    res.status(500).json({ message: errorMessage(error, "Failed to save setting") })
   }
 }

@@ -1,6 +1,7 @@
 import { MedusaContainer } from "@medusajs/framework/types"
 import { MARKETPLACE_MODULE } from "../modules/marketplace"
 import { endSellerCampaign } from "../lib/seller-campaigns"
+import { errorMessage } from "../lib/errors"
 
 /**
  * Saatlik kampanya süre-dolum işi: bitiş tarihi geçmiş ama hâlâ "active" olan
@@ -22,8 +23,8 @@ export default async function expireCampaignsJob(container: MedusaContainer) {
     try {
       await endSellerCampaign(container, c)
       ended++
-    } catch (e: any) {
-      logger.error(`[expire-campaigns] ${c.id}: ${e?.message}`)
+    } catch (e) {
+      logger.error(`[expire-campaigns] ${c.id}: ${errorMessage(e)}`)
     }
   }
   if (ended > 0) logger.info(`[expire-campaigns] ${ended} süresi dolan kampanya sonlandırıldı.`)

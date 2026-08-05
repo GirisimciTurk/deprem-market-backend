@@ -1,5 +1,6 @@
 import { MARKETPLACE_MODULE } from "../modules/marketplace"
 import type MarketplaceModuleService from "../modules/marketplace/service"
+import { errorMessage } from "./errors"
 
 /**
  * Sistem kaydı (audit log) yardımcıları — "kim, ne zaman, ne yaptı".
@@ -44,9 +45,9 @@ export async function logSellerAction(container: any, entry: AuditEntry): Promis
       status: entry.status ?? null,
       metadata: entry.metadata ?? null,
     } as any)
-  } catch (e: any) {
+  } catch (e) {
     try {
-      container.resolve("logger").error(`[SellerAudit] kayıt yazılamadı: ${e?.message}`)
+      container.resolve("logger").error(`[SellerAudit] kayıt yazılamadı: ${errorMessage(e)}`)
     } catch { /* logger bile yoksa sessiz geç */ }
   }
 }

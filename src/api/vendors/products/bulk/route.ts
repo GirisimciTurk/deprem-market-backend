@@ -7,6 +7,7 @@ import { updateVendorProduct } from "../../_lib/update-vendor-product"
 import { getPendingRequiredContracts } from "../../../../lib/seller-contracts"
 import { notifyAdmins } from "../../../../lib/notify"
 import { vendorBulkLimiter, enforceRateLimit } from "../../../../lib/rate-limiter"
+import { errorMessage } from "../../../../lib/errors"
 
 const MAX_ROWS = 500
 
@@ -337,11 +338,11 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         })
       }
       if (skuKey) processedSkus.add(skuKey)
-    } catch (e: any) {
+    } catch (e) {
       errors.push({
         index: r._index,
         title: r.title,
-        message: e?.message || (existing ? "Ürün güncellenemedi." : "Ürün oluşturulamadı."),
+        message: errorMessage(e, existing ? "Ürün güncellenemedi." : "Ürün oluşturulamadı."),
       })
     }
   }
@@ -449,11 +450,11 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       for (const v of variants) {
         if (v.sku) processedSkus.add(String(v.sku).trim().toLowerCase())
       }
-    } catch (e: any) {
+    } catch (e) {
       errors.push({
         index: first._index,
         title: first.title,
-        message: e?.message || `Çok-varyantlı ürün oluşturulamadı (${variants.length} varyant).`,
+        message: errorMessage(e, `Çok-varyantlı ürün oluşturulamadı (${variants.length} varyant).`),
       })
     }
   }

@@ -1,6 +1,7 @@
 import { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
 import { splitOrder } from "../lib/split-order"
 import { generateInvoicesForOrder } from "../lib/einvoice/generate"
+import { errorMessage } from "../lib/errors"
 
 type OrderPlacedEvent = { id: string }
 
@@ -17,8 +18,8 @@ export default async function orderSplitHandler({
   await splitOrder(container, data.id)
   try {
     await generateInvoicesForOrder(container, data.id)
-  } catch (e: any) {
-    container.resolve("logger").error(`[order-split] fatura üretimi: ${e.message}`)
+  } catch (e) {
+    container.resolve("logger").error(`[order-split] fatura üretimi: ${errorMessage(e)}`)
   }
 }
 

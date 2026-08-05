@@ -7,6 +7,7 @@ import {
   ResellerMailStatus,
 } from "../../../../lib/reseller-mail"
 import { provisionSellerFromApplication } from "../../../../lib/provision-seller-from-application"
+import { errorMessage } from "../../../../lib/errors"
 
 const updateSchema = z.object({
   status: z.enum(["pending", "approved", "rejected", "suspended"]),
@@ -36,8 +37,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       await provisionSellerFromApplication(req.scope, application)
       // seller_id yazıldıysa güncel kaydı geri oku (yanıtta dönsün).
       application = await reseller.retrieveResellerApplication(req.params.id)
-    } catch (e: any) {
-      req.scope.resolve("logger").error(`[reseller-applications] Satıcı açılamadı: ${e?.message}`)
+    } catch (e) {
+      req.scope.resolve("logger").error(`[reseller-applications] Satıcı açılamadı: ${errorMessage(e)}`)
     }
   }
 
@@ -49,8 +50,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         application as any,
         parsed.data.status as ResellerMailStatus
       )
-    } catch (e: any) {
-      req.scope.resolve("logger").error(`[reseller-applications] Mail gönderilemedi: ${e?.message}`)
+    } catch (e) {
+      req.scope.resolve("logger").error(`[reseller-applications] Mail gönderilemedi: ${errorMessage(e)}`)
     }
   }
 

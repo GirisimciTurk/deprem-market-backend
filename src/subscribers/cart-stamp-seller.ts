@@ -1,6 +1,7 @@
 import { SubscriberArgs, SubscriberConfig } from "@medusajs/framework"
 import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
 import { LINE_SHIP_META_KEY, LineShipMeta } from "../lib/cart-cargo"
+import { errorMessage } from "../lib/errors"
 
 /**
  * Sepet her güncellendiğinde, her kalemin `metadata.dt_ship`'ine ürünün
@@ -64,8 +65,8 @@ export default async function stampCartSellerHandler({
     if (updates.length > 0) {
       await cartModule.updateLineItems(updates)
     }
-  } catch (e: any) {
-    logger.warn(`[cart-stamp-seller] ${cartId} damgalanamadı: ${e?.message}`)
+  } catch (e) {
+    logger.warn(`[cart-stamp-seller] ${cartId} damgalanamadı: ${errorMessage(e)}`)
   }
 }
 

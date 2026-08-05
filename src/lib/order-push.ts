@@ -1,6 +1,7 @@
 import { MedusaContainer } from "@medusajs/framework/types"
 import { Modules } from "@medusajs/framework/utils"
 import { sendToCustomer } from "./web-push"
+import { errorMessage } from "./errors"
 
 /**
  * Sipariş durumuna göre giriş yapmış müşteriye web push gönderir.
@@ -43,8 +44,8 @@ export async function sendOrderPush(
   let order: any
   try {
     order = await orderModule.retrieveOrder(orderId)
-  } catch (err: any) {
-    logger.warn(`[OrderPush] Sipariş bulunamadı: ${orderId} (${err?.message})`)
+  } catch (err) {
+    logger.warn(`[OrderPush] Sipariş bulunamadı: ${orderId} (${errorMessage(err)})`)
     return
   }
 
@@ -72,7 +73,7 @@ export async function sendOrderPush(
     if (sent > 0) {
       logger.info(`[OrderPush:${status}] ${sent} cihaza gönderildi (#${no}).`)
     }
-  } catch (err: any) {
-    logger.warn(`[OrderPush:${status}] Gönderim hatası: ${err?.message}`)
+  } catch (err) {
+    logger.warn(`[OrderPush:${status}] Gönderim hatası: ${errorMessage(err)}`)
   }
 }

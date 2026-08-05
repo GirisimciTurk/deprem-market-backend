@@ -2,6 +2,7 @@ import { MARKETPLACE_MODULE } from "../modules/marketplace"
 import MarketplaceModuleService from "../modules/marketplace/service"
 import { notifySeller } from "./notify"
 import { sendMessageToSellerEmail, sendMessageToCustomerEmail } from "./message-mail"
+import { errorMessage } from "./errors"
 
 type SenderType = "customer" | "seller"
 
@@ -114,8 +115,8 @@ export async function postMessage(
         body: args.body,
       })
     }
-  } catch (e: any) {
-    container.resolve("logger")?.error?.(`[conversations] bildirim başarısız: ${e?.message}`)
+  } catch (e) {
+    container.resolve("logger")?.error?.(`[conversations] bildirim başarısız: ${errorMessage(e)}`)
   }
 
   return message

@@ -3,6 +3,7 @@ import { MARKETPLACE_MODULE } from "../../../../../modules/marketplace"
 import MarketplaceModuleService from "../../../../../modules/marketplace/service"
 import { resolveSeller } from "../../../_lib/resolve-seller"
 import { acceptSellerReturn } from "../../../../../lib/seller-return-actions"
+import { errorMessage } from "../../../../../lib/errors"
 
 /**
  * POST /vendors/returns/:id/receive — satıcı iadeyi TESLİM ALIP ONAYLAR.
@@ -26,8 +27,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   try {
     const { refunded } = await acceptSellerReturn(req.scope, sr)
     return res.json({ received: true, refunded_amount: refunded })
-  } catch (e: any) {
-    req.scope.resolve("logger").error(`[vendor-return-receive] ${id}: ${e?.message}`)
-    return res.status(400).json({ message: e?.message || "İade teslim alınamadı." })
+  } catch (e) {
+    req.scope.resolve("logger").error(`[vendor-return-receive] ${id}: ${errorMessage(e)}`)
+    return res.status(400).json({ message: errorMessage(e, "İade teslim alınamadı.") })
   }
 }

@@ -14,6 +14,7 @@ import {
   CarrierCode,
 } from "../../../../../lib/cargo"
 import { sendSellerShipmentEmail } from "../../../../../lib/seller-cargo-mail"
+import { errorMessage } from "../../../../../lib/errors"
 
 const bodySchema = z.object({
   carrier: z.enum(CARRIER_CODES as [CarrierCode, ...CarrierCode[]]).optional(),
@@ -116,8 +117,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         { ...(updated as any), carrier, tracking_number: trackingNumber, tracking_url: trackingUrl },
         resolved.seller.name
       )
-    } catch (e: any) {
-      req.scope.resolve("logger").error(`[fulfill] Kargo maili gönderilemedi: ${e?.message}`)
+    } catch (e) {
+      req.scope.resolve("logger").error(`[fulfill] Kargo maili gönderilemedi: ${errorMessage(e)}`)
     }
   }
 

@@ -3,6 +3,7 @@ import { Modules } from "@medusajs/framework/utils"
 import { sendMail } from "../lib/mailer"
 import { writeEmailPreview } from "../lib/email-preview"
 import { sendOrderPush } from "../lib/order-push"
+import { errorMessage } from "../lib/errors"
 
 type OrderPlacedEvent = {
   id: string
@@ -35,8 +36,8 @@ export default async function orderPlacedHandler({
         "shipping_address",
       ],
     })
-  } catch (err: any) {
-    logger.error(`[OrderPlacedSubscriber] Order not found: ${orderId} (${err.message})`)
+  } catch (err) {
+    logger.error(`[OrderPlacedSubscriber] Order not found: ${orderId} (${errorMessage(err)})`)
     return
   }
 

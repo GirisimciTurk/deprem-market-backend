@@ -3,6 +3,7 @@ import { Modules } from "@medusajs/framework/utils"
 import { z } from "zod"
 import { computeCustomerRFM, SEGMENT_LABELS } from "../../../../lib/segments"
 import { sendMail } from "../../../../lib/mailer"
+import { errorMessage } from "../../../../lib/errors"
 
 const schema = z.object({
   segment: z.enum(["champions", "loyal", "new", "at_risk", "dormant", "lost"]),
@@ -61,8 +62,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     try {
       const r = await sendMail({ to, subject, html })
       if (r.ok) sent++
-    } catch (e: any) {
-      req.scope.resolve("logger").warn(`[segments/email] ${to}: ${e?.message}`)
+    } catch (e) {
+      req.scope.resolve("logger").warn(`[segments/email] ${to}: ${errorMessage(e)}`)
     }
   }
 

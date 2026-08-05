@@ -3,6 +3,7 @@ import {
   capturePaymentWorkflow,
   refundPaymentWorkflow,
 } from "@medusajs/medusa/core-flows"
+import { errorMessage } from "./errors"
 
 export type RefundResult = {
   refunded: number
@@ -65,8 +66,8 @@ export async function refundOrderAmount(
       await capturePaymentWorkflow(container).run({
         input: { payment_id: payment.id },
       })
-    } catch (e: any) {
-      logger.error(`Refund: capture başarısız ${payment.id}: ${e?.message}`)
+    } catch (e) {
+      logger.error(`Refund: capture başarısız ${payment.id}: ${errorMessage(e)}`)
       throw new RefundError("Ödeme tahsil edilemedi (capture). İade yapılamadı.")
     }
   }

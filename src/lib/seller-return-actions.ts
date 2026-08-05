@@ -9,6 +9,7 @@ import { refundOrderAmount } from "./refund-order"
 import { sendReturnStatusEmail } from "./return-mail"
 import { routeReturnReceived } from "./process-return"
 import { recordReturnStockMovements } from "./return-stock-audit"
+import { errorMessage } from "./errors"
 
 const num = (v: any) => Number(v ?? 0)
 
@@ -74,8 +75,8 @@ export async function acceptSellerReturn(
   // 4) müşteriye "iadeniz onaylandı" maili (best-effort; event'e güvenmiyoruz)
   try {
     await sendReturnStatusEmail(container, sellerReturn.return_id, "received")
-  } catch (e: any) {
-    container.resolve("logger").error(`[seller-return:accept] mail: ${e?.message}`)
+  } catch (e) {
+    container.resolve("logger").error(`[seller-return:accept] mail: ${errorMessage(e)}`)
   }
 
   return { refunded: result.refunded }
@@ -101,8 +102,8 @@ export async function rejectSellerReturn(
 
   try {
     await sendReturnStatusEmail(container, sellerReturn.return_id, "rejected", { reason })
-  } catch (e: any) {
-    container.resolve("logger").error(`[seller-return:reject] mail: ${e?.message}`)
+  } catch (e) {
+    container.resolve("logger").error(`[seller-return:reject] mail: ${errorMessage(e)}`)
   }
 }
 
@@ -123,9 +124,9 @@ export async function upholdRejectSellerReturn(
     await cancelReturnWorkflow(container).run({
       input: { return_id: sellerReturn.return_id } as any,
     })
-  } catch (e: any) {
+  } catch (e) {
     container.resolve("logger").info(
-      `[uphold-reject] native return iptal edilemedi (açık bırakıldı): ${e?.message}`
+      `[uphold-reject] native return iptal edilemedi (açık bırakıldı): ${errorMessage(e)}`
     )
   }
 }

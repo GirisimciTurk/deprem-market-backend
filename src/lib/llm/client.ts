@@ -1,3 +1,4 @@
+import { errorMessage } from "../../lib/errors"
 /**
  * Düşük seviyeli Gemini istemcisi — TEK sağlayıcı-bağımlı dosya.
  * Geri kalan kod yalnızca buradaki tiplenmiş yardımcıları kullanır; sağlayıcı
@@ -175,8 +176,8 @@ export async function geminiGenerate<T = string>(
     } catch {
       return { ok: false, error: `JSON parse hatası: ${text.slice(0, 200)}` }
     }
-  } catch (e: any) {
-    const msg = e?.name === "AbortError" ? "Gemini zaman aşımı" : e?.message || "Gemini isteği başarısız"
+  } catch (e) {
+    const msg = e?.name === "AbortError" ? "Gemini zaman aşımı" : errorMessage(e, "Gemini isteği başarısız")
     return { ok: false, error: msg }
   } finally {
     clearTimeout(timer)

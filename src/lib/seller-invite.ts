@@ -3,6 +3,7 @@ import { Modules, ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { generateResetPasswordTokenWorkflow } from "@medusajs/medusa/core-flows"
 import { MARKETPLACE_MODULE } from "../modules/marketplace"
 import type MarketplaceModuleService from "../modules/marketplace/service"
+import { errorMessage } from "./errors"
 
 /** Satıcı panel URL'i (env override; yereldeki vendor :5174, prod satici.depremtek.market). */
 export function vendorPanelUrl(): string {
@@ -79,8 +80,8 @@ export async function inviteSeller(container: any, sellerId: string): Promise<In
         authIdentityId = reg.authIdentity.id
         existingMeta = reg.authIdentity.app_metadata || {}
       }
-    } catch (e: any) {
-      logger.error(`[SellerInvite] Auth kimliği oluşturulamadı (${email}): ${e?.message}`)
+    } catch (e) {
+      logger.error(`[SellerInvite] Auth kimliği oluşturulamadı (${email}): ${errorMessage(e)}`)
     }
   }
   if (!authIdentityId) {
@@ -105,8 +106,8 @@ export async function inviteSeller(container: any, sellerId: string): Promise<In
       } as any)
       sellerAdminId = (a as any).id
       created = true
-    } catch (e: any) {
-      logger.error(`[SellerInvite] seller_admin oluşturulamadı (${email}): ${e?.message}`)
+    } catch (e) {
+      logger.error(`[SellerInvite] seller_admin oluşturulamadı (${email}): ${errorMessage(e)}`)
       return {
         ok: false,
         reason: "email_taken",
@@ -121,8 +122,8 @@ export async function inviteSeller(container: any, sellerId: string): Promise<In
       id: authIdentityId,
       app_metadata: { ...existingMeta, seller_id: sellerAdminId },
     })
-  } catch (e: any) {
-    logger.error(`[SellerInvite] Auth identity bağlanamadı: ${e?.message}`)
+  } catch (e) {
+    logger.error(`[SellerInvite] Auth identity bağlanamadı: ${errorMessage(e)}`)
     return { ok: false, reason: "auth_failed", message: "Giriş kimliği satıcıya bağlanamadı." }
   }
 
@@ -138,8 +139,8 @@ export async function inviteSeller(container: any, sellerId: string): Promise<In
       },
     })
     token = typeof result === "string" ? result : ""
-  } catch (e: any) {
-    logger.error(`[SellerInvite] Reset token üretilemedi: ${e?.message}`)
+  } catch (e) {
+    logger.error(`[SellerInvite] Reset token üretilemedi: ${errorMessage(e)}`)
     return { ok: false, reason: "auth_failed", message: "Şifre belirleme bağlantısı üretilemedi." }
   }
 
@@ -174,8 +175,8 @@ export async function generateSellerResetLink(
     if (!token) return { ok: false, message: "Şifre sıfırlama bağlantısı üretilemedi." }
     const reset_link = `${vendorPanelUrl()}/sifre-belirle?token=${encodeURIComponent(token)}&email=${encodeURIComponent(normalized)}`
     return { ok: true, reset_link }
-  } catch (e: any) {
-    logger.error(`[SellerReset] ${normalized} için token üretilemedi: ${e?.message}`)
+  } catch (e) {
+    logger.error(`[SellerReset] ${normalized} için token üretilemedi: ${errorMessage(e)}`)
     return { ok: false, message: "Şifre sıfırlama bağlantısı üretilemedi." }
   }
 }
@@ -259,8 +260,8 @@ export async function inviteSellerStaff(
         authIdentityId = reg.authIdentity.id
         existingMeta = reg.authIdentity.app_metadata || {}
       }
-    } catch (e: any) {
-      logger.error(`[StaffInvite] Auth kimliği oluşturulamadı (${email}): ${e?.message}`)
+    } catch (e) {
+      logger.error(`[StaffInvite] Auth kimliği oluşturulamadı (${email}): ${errorMessage(e)}`)
     }
   }
   if (!authIdentityId) {
@@ -305,8 +306,8 @@ export async function inviteSellerStaff(
       id: authIdentityId,
       app_metadata: { ...existingMeta, seller_id: sellerAdminId },
     })
-  } catch (e: any) {
-    logger.error(`[StaffInvite] Auth identity bağlanamadı: ${e?.message}`)
+  } catch (e) {
+    logger.error(`[StaffInvite] Auth identity bağlanamadı: ${errorMessage(e)}`)
     return { ok: false, reason: "auth_failed", message: "Giriş kimliği çalışana bağlanamadı." }
   }
 
@@ -322,8 +323,8 @@ export async function inviteSellerStaff(
       },
     })
     token = typeof result === "string" ? result : ""
-  } catch (e: any) {
-    logger.error(`[StaffInvite] Reset token üretilemedi: ${e?.message}`)
+  } catch (e) {
+    logger.error(`[StaffInvite] Reset token üretilemedi: ${errorMessage(e)}`)
     return { ok: false, reason: "auth_failed", message: "Şifre belirleme bağlantısı üretilemedi." }
   }
 

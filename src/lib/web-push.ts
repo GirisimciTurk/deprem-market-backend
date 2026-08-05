@@ -2,6 +2,7 @@ import webpush from "web-push"
 import { MedusaContainer } from "@medusajs/framework/types"
 import { PUSH_MODULE } from "../modules/push"
 import type PushModuleService from "../modules/push/service"
+import { errorMessage } from "./errors"
 
 /**
  * Web push gönderim yardımcısı.
@@ -103,13 +104,13 @@ export async function sendToSubscriptions(
           { TTL: 60 * 60 * 24 } // 24 saat: cihaz çevrimdışıysa açılınca teslim et
         )
         sent++
-      } catch (err: any) {
+      } catch (err) {
         const status = err?.statusCode
         if (status === 404 || status === 410) {
           staleIds.push(s.id)
         } else {
           logger.warn(
-            `[WebPush] Gönderim hatası (${status ?? "?"}): ${err?.message}`
+            `[WebPush] Gönderim hatası (${status ?? "?"}): ${errorMessage(err)}`
           )
         }
       }

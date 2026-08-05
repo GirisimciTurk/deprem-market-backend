@@ -5,6 +5,7 @@ import { MARKETPLACE_MODULE } from "../../../../modules/marketplace"
 import type MarketplaceModuleService from "../../../../modules/marketplace/service"
 import { resolveSeller } from "../../_lib/resolve-seller"
 import { PERMISSION_KEYS } from "../../../../lib/seller-permissions"
+import { errorMessage } from "../../../../lib/errors"
 
 /** Hedef çalışanın bu mağazaya ait olduğunu doğrular. */
 async function loadMember(req: MedusaRequest, sellerId: string, id: string) {
@@ -112,8 +113,8 @@ export async function DELETE(req: MedusaRequest, res: MedusaResponse) {
         await authService.updateAuthIdentities({ id: ai.id, app_metadata: meta })
       }
     }
-  } catch (e: any) {
-    try { req.scope.resolve("logger").warn(`[team:DELETE] auth bağı koparılamadı: ${e?.message}`) } catch { /* logger bile yoksa sessiz geç */ }
+  } catch (e) {
+    try { req.scope.resolve("logger").warn(`[team:DELETE] auth bağı koparılamadı: ${errorMessage(e)}`) } catch { /* logger bile yoksa sessiz geç */ }
   }
 
   await marketplace.deleteSellerAdmins(id)

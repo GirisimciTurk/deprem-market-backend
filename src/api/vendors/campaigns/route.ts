@@ -5,6 +5,7 @@ import { MARKETPLACE_MODULE } from "../../../modules/marketplace"
 import MarketplaceModuleService from "../../../modules/marketplace/service"
 import { getPendingRequiredContracts } from "../../../lib/seller-contracts"
 import { createSellerCampaign, campaignLiveStatus } from "../../../lib/seller-campaigns"
+import { errorMessage } from "../../../lib/errors"
 
 /** GET /vendors/campaigns — satıcının kendi kampanyaları (canlı durumlu). */
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
@@ -90,7 +91,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       }
     )
     return res.status(201).json({ campaign })
-  } catch (e: any) {
-    return res.status(400).json({ message: e?.message || "Kampanya oluşturulamadı." })
+  } catch (e) {
+    return res.status(400).json({ message: errorMessage(e, "Kampanya oluşturulamadı.") })
   }
 }

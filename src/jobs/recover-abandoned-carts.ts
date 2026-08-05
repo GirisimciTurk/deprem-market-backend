@@ -3,6 +3,7 @@ import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { sendMail } from "../lib/mailer"
 import { sendToCustomer } from "../lib/web-push"
 import { listEmailOptedInCustomerIds } from "../lib/marketing-consent"
+import { errorMessage } from "../lib/errors"
 
 /**
  * Terk edilmiş sepet kurtarma (saatlik). Tamamlanmamış (completed_at NULL), e-postası
@@ -122,8 +123,8 @@ export default async function recoverAbandonedCartsJob(container: MedusaContaine
           html,
         })
         if (r.ok) mailed++
-      } catch (e: any) {
-        logger.warn(`[recover-carts] mail ${cart.id}: ${e?.message}`)
+      } catch (e) {
+        logger.warn(`[recover-carts] mail ${cart.id}: ${errorMessage(e)}`)
       }
     } else {
       skipped++
@@ -138,8 +139,8 @@ export default async function recoverAbandonedCartsJob(container: MedusaContaine
           tag: `cart-recovery-${cart.id}`,
         })
         if (sent > 0) pushed++
-      } catch (e: any) {
-        logger.warn(`[recover-carts] push ${cart.id}: ${e?.message}`)
+      } catch (e) {
+        logger.warn(`[recover-carts] push ${cart.id}: ${errorMessage(e)}`)
       }
     }
 

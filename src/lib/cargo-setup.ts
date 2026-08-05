@@ -4,6 +4,7 @@ import {
   deleteShippingOptionsWorkflow,
   updateShippingOptionsWorkflow,
 } from "@medusajs/medusa/core-flows"
+import { errorMessage } from "./errors"
 
 /**
  * Yurtiçi Kargo altyapısını kurar (idempotent). Hem `npm run setup:cargo` script'i
@@ -81,8 +82,8 @@ export async function runCargoSetup(container: any): Promise<{ created: string[]
       [Modules.FULFILLMENT]: { fulfillment_provider_id: CARGO_PROVIDER_ID },
     })
     logger.info(`[setup-cargo] '${CARGO_PROVIDER_ID}' provider'ı lokasyona bağlandı.`)
-  } catch (e: any) {
-    logger.info(`[setup-cargo] Provider link zaten mevcut olabilir (atlanıyor): ${e?.message}`)
+  } catch (e) {
+    logger.info(`[setup-cargo] Provider link zaten mevcut olabilir (atlanıyor): ${errorMessage(e)}`)
   }
 
   const { data: existingOptions } = await query.graph({
@@ -107,8 +108,8 @@ export async function runCargoSetup(container: any): Promise<{ created: string[]
         const opt = (existingOptions as any[]).find((o) => o.id === r.id)
         if (opt) opt.name = r.name
       }
-    } catch (e: any) {
-      logger.warn(`[setup-cargo] Aras→Yurtiçi yeniden adlandırma atlandı: ${e?.message}`)
+    } catch (e) {
+      logger.warn(`[setup-cargo] Aras→Yurtiçi yeniden adlandırma atlandı: ${errorMessage(e)}`)
     }
   }
 
@@ -149,8 +150,8 @@ export async function runCargoSetup(container: any): Promise<{ created: string[]
     try {
       await deleteShippingOptionsWorkflow(container).run({ input: { ids: removeIds } })
       logger.info(`[setup-cargo] ${removeIds.length} eski/flat kargo seçeneği silindi.`)
-    } catch (e: any) {
-      logger.warn(`[setup-cargo] Seçenekler silinemedi (atlanıyor): ${e?.message}`)
+    } catch (e) {
+      logger.warn(`[setup-cargo] Seçenekler silinemedi (atlanıyor): ${errorMessage(e)}`)
     }
   }
 
