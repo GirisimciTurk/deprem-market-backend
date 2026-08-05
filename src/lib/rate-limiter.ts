@@ -1,4 +1,8 @@
-import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import {
+  MedusaRequest,
+  MedusaResponse,
+  MedusaNextFunction,
+} from "@medusajs/framework/http"
 import { Redis } from "ioredis"
 import { getClientIp } from "./client-ip"
 
@@ -155,6 +159,18 @@ export const trackLimiter = new RateLimiter(120, 60000, "track")
 // kimliksiz/açık uç olduğundan IP başına 20/dk ile maliyet/DoS amplifikasyonu sınırlanır.
 export const assistantLimiter = new RateLimiter(20, 60000, "assistant")
 
+// --- Kimlik doğrulama (/auth/*) ------------------------------------------
+// Giriş, kayıt ve parola sıfırlama uçları Medusa çekirdeğinden gelir ve daha
+// önce HİÇBİR uygulama seviyesi limiti yoktu → brute-force ve credential
+// stuffing'e açıktı. İki katman:
+//   - Patlama: IP başına dakikada 10 deneme (otomatik araçları anında keser).
+//   - Toplam:  IP başına saatte 60 deneme (yavaş, sabırlı denemeleri de keser;
+//              tek katman dakikalık limit günde ~14 bin denemeye izin verirdi).
+// Gerçek kullanıcı bir girişte 1-3 istek yapar; bu değerler paylaşımlı ofis/NAT
+// IP'lerinde bile rahat bir pay bırakır.
+export const authBurstLimiter = new RateLimiter(10, 60_000, "auth-burst")
+export const authHourlyLimiter = new RateLimiter(60, 3_600_000, "auth-hour")
+
 /**
  * Ortak yardımcı: istek IP'si için rate-limit uygula. Limitlenmişse 429 yazıp true döner;
  * çağıran route hemen `return` etmeli. ASYNC — `await enforceRateLimit(...)` olarak kullan.
@@ -177,4 +193,40 @@ export async function enforceRateLimit(
     return true
   }
   return false
+}
+
+/**
+ * MIDDLEWARE biçimi — Medusa'nın KENDİ route'larına limit uygulamak için.
+ *
+ * `/auth/*` (giriş, kayıt, parola sıfırlama) çekirdek route'lar olduğu için
+ * dosyalarına `enforceRateLimit` çağrısı ekleyemiyoruz; bu sarmalayıcı
+ * middlewares.ts'ten takılır. Birden fazla limiter verilebilir (ör. kısa
+ * pencerede patlama + uzun pencerede toplam deneme) — HERHANGİ biri aşılırsa
+ * 429 döner.
+ *
+ * Redis yoksa limiter süreç-içi fallback'e düşer; çok örnekli dağıtımda
+ * koruma örnek başına olur, o yüzden üretimde REDIS_URL önerilir.
+ */
+export function rateLimitMiddleware(...limiters: RateLimiter[]) {
+  return async (
+    req: MedusaRequest,
+    res: MedusaResponse,
+    next: MedusaNextFunction
+  ): Promise<void> => {
+    const clientIp = getClientIp(req)
+    for (const limiter of limiters) {
+      if (await limiter.isLimited(clientIp)) {
+        const retryAfterSeconds = await limiter.getRemainingSeconds(clientIp)
+        res.setHeader("Retry-After", String(Math.max(1, retryAfterSeconds)))
+        res.status(429).json({
+          success: false,
+          message:
+            "Çok fazla deneme yapıldı. Lütfen biraz bekleyip tekrar deneyin.",
+          retryAfterSeconds,
+        })
+        return
+      }
+    }
+    next()
+  }
 }
