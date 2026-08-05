@@ -7,7 +7,6 @@
  * Anahtar `GEMINI_API_KEY`, model `GEMINI_MODEL` env'inden okunur — koda yazılmaz.
  */
 
-import { createHash } from "crypto"
 
 const API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
@@ -85,7 +84,7 @@ const CACHE_TTL = Number(process.env.LLM_CACHE_TTL_MS || 60 * 60 * 1000)
 const CACHE_MAX = 500
 const cacheEnabled = () => process.env.LLM_CACHE !== "off" && CACHE_TTL > 0
 
-function cacheGet(key: string): GenerateResult<unknown> | null {
+function _cacheGet(key: string): GenerateResult<unknown> | null {
   if (!cacheEnabled()) return null
   const e = LLM_CACHE.get(key)
   if (!e) return null
@@ -99,7 +98,7 @@ function cacheGet(key: string): GenerateResult<unknown> | null {
   return e.value
 }
 
-function cacheSet(key: string, value: GenerateResult<unknown>): void {
+function _cacheSet(key: string, value: GenerateResult<unknown>): void {
   if (!cacheEnabled()) return
   if (LLM_CACHE.size >= CACHE_MAX) {
     const oldest = LLM_CACHE.keys().next().value

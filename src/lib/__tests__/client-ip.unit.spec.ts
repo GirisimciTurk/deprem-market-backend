@@ -11,7 +11,9 @@ function load(trustedProxyCount?: string) {
   jest.resetModules()
   if (trustedProxyCount === undefined) delete process.env.TRUSTED_PROXY_COUNT
   else process.env.TRUSTED_PROXY_COUNT = trustedProxyCount
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // Modül env okumasını yükleme anında yapıyor; env'i kurduktan SONRA taze
+  // yüklemek için dinamik require şart (import hoisting buna izin vermez).
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   return require("../client-ip").getClientIp as (req: Req) => string
 }
 

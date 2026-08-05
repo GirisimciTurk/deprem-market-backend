@@ -18,7 +18,7 @@ import {
 // bağlı; değiştirmek fp_aras_kargo çözümünü bozar). Görünen her şey Yurtiçi.
 const CARGO_PROVIDER_ID = "aras_kargo"
 const STARTER_OPTION_NAMES = ["Standard Shipping", "Express Shipping"]
-const CARGO_OPTION_NAMES = [
+const _CARGO_OPTION_NAMES = [
   "Yurtiçi Kargo - Standart",
   "Yurtiçi Kargo - Hızlı",
   "Ücretsiz Kargo",
@@ -30,7 +30,7 @@ const ARAS_RENAME: [string, string][] = [
   ["Aras Kargo - Hızlı", "Yurtiçi Kargo - Hızlı"],
 ]
 // Tutarlar minor unit (kuruş): 50 TL = 5000.
-const MINOR = 100
+const _MINOR = 100
 
 export async function runCargoSetup(container: any): Promise<{ created: string[]; kept: string[] }> {
   const logger = container.resolve(ContainerRegistrationKeys.LOGGER)
@@ -85,7 +85,7 @@ export async function runCargoSetup(container: any): Promise<{ created: string[]
     logger.info(`[setup-cargo] Provider link zaten mevcut olabilir (atlanıyor): ${e?.message}`)
   }
 
-  let { data: existingOptions } = await query.graph({
+  const { data: existingOptions } = await query.graph({
     entity: "shipping_option",
     fields: ["id", "name", "provider_id", "price_type"],
   })

@@ -47,7 +47,7 @@ export async function logSellerAction(container: any, entry: AuditEntry): Promis
   } catch (e: any) {
     try {
       container.resolve("logger").error(`[SellerAudit] kayıt yazılamadı: ${e?.message}`)
-    } catch {}
+    } catch { /* logger bile yoksa sessiz geç */ }
   }
 }
 

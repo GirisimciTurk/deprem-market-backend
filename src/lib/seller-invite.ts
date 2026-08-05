@@ -127,7 +127,7 @@ export async function inviteSeller(container: any, sellerId: string): Promise<In
   }
 
   // 4) Şifre-belirleme token'ı üret → subscriber linkli e-posta atar.
-  let token = ""
+  let token: string
   try {
     const { result } = await generateResetPasswordTokenWorkflow(container).run({
       input: {
@@ -311,7 +311,7 @@ export async function inviteSellerStaff(
   }
 
   // 4) Şifre-belirleme token'ı üret → subscriber linkli e-posta atar.
-  let token = ""
+  let token: string
   try {
     const { result } = await generateResetPasswordTokenWorkflow(container).run({
       input: {
