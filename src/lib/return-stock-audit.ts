@@ -1,10 +1,15 @@
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { recordMovement, resolveVariantInventory, getLevel } from "./stock-movement"
+import { notifyBackInStock } from "./back-in-stock"
 
 /**
  * İade teslim alındığında (Medusa managed-inventory stoğu otomatik geri eklemiştir)
  * her kalem için bir "return" stok hareketi yazar — denetim izi (Stok Geçmişi) için.
  * Best-effort; stok SEVİYESİNİ değiştirmez, yalnızca hareket kaydı ekler.
+ *
+ * Ayrıca "stoğa gelince haber ver" bildirimini tetikler: iade stoğu Medusa'nın
+ * kendi akışı geri eklediği için setStockedQuantity'den GEÇMEZ, dolayısıyla
+ * tükenmiş bir ürün müşteri iadesiyle stoğa döndüğünde aboneler haber alamıyordu.
  */
 export async function recordReturnStockMovements(container: any, returnId: string) {
   try {
@@ -46,6 +51,19 @@ export async function recordReturnStockMovements(container: any, returnId: strin
         reference_id: returnId,
         reason: "İade teslim alındı (stok geri eklendi)",
       })
+
+      // "Stoğa geldi" bildirimi. Bu noktada stok ZATEN geri eklenmiş durumda, o
+      // yüzden önceki seviye geriye doğru hesaplanıyor: iade öncesi stoklanan =
+      // mevcut − iade edilen miktar. Ölçüt setStockedQuantity ile aynı: satılabilir
+      // (stoklanan − rezerve) 0'dan pozitife geçtiyse bildir.
+      if (level) {
+        const prevAvailable =
+          level.stocked_quantity - qty - level.reserved_quantity
+        const newAvailable = level.stocked_quantity - level.reserved_quantity
+        if (prevAvailable <= 0 && newAvailable > 0) {
+          await notifyBackInStock(container, inv.inventory_item_id)
+        }
+      }
     }
   } catch {
     /* best-effort */

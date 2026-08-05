@@ -13,6 +13,7 @@ import { sanitizeShowcaseKeys } from "../../../../lib/showcase-categories"
 import { sanitizeVendorCertifications } from "../../_lib/certifications"
 import { notifyAdmins } from "../../../../lib/notify"
 import { dropMeta } from "../../../../lib/metadata"
+import { applyStockChange } from "../../../../lib/stock-movement"
 
 /** Ürünün bu satıcıya ait olup olmadığını doğrular. */
 async function ownsProduct(req: MedusaRequest, productId: string, sellerId: string) {
@@ -360,24 +361,21 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
   const { data: locations } = await query.graph({ entity: "stock_location", fields: ["id"] })
   const locationId = locations?.[0]?.id
-  const inventory = req.scope.resolve(Modules.INVENTORY)
 
-  /** Bir envanter kalemi için varsayılan lokasyonda stok seviyesini ayarlar (yoksa açar). */
+  /**
+   * Bir envanter kalemi için varsayılan lokasyonda stok seviyesini ayarlar (yoksa açar).
+   * applyStockChange üzerinden gider: envanter modülü doğrudan çağrılırsa
+   * "stoğa gelince haber ver" bildirimi gönderilmez ve stok hareketi deftere yazılmaz.
+   */
   const setStock = async (invItemId: string, qty: number) => {
     if (!invItemId || !locationId) return
-    const existing = await inventory.listInventoryLevels({
-      inventory_item_id: invItemId,
-      location_id: locationId,
+    await applyStockChange(req.scope, {
+      inventoryItemId: invItemId,
+      locationId,
+      newStocked: qty,
+      type: "manual",
+      reason: "Satıcı paneli — ürün güncelleme",
     })
-    if (existing.length > 0) {
-      await inventory.updateInventoryLevels([
-        { inventory_item_id: invItemId, location_id: locationId, stocked_quantity: qty },
-      ])
-    } else {
-      await inventory.createInventoryLevels([
-        { inventory_item_id: invItemId, location_id: locationId, stocked_quantity: qty },
-      ])
-    }
   }
 
   if (isMulti) {
