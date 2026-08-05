@@ -247,6 +247,20 @@ export default defineMiddlewares({
       middlewares: [authenticate("customer", ["session", "bearer"])],
     },
     {
+      // Favoriler (kalp ikonu) hesaba bağlıdır → giriş ZORUNLU, misafir yok.
+      // allowUnauthenticated BİLEREK verilmedi: giriş yoksa 401 dönmeli ki
+      // storefront "Favorilere eklemek için giriş yapın" baloncuğunu gösterebilsin.
+      method: ["GET", "POST", "DELETE"],
+      matcher: "/store/wishlist",
+      middlewares: [authenticate("customer", ["session", "bearer"])],
+    },
+    {
+      // Girişte cihazdaki eski localStorage favorilerini hesaba aktarma ucu.
+      method: ["POST"],
+      matcher: "/store/wishlist/merge",
+      middlewares: [authenticate("customer", ["session", "bearer"])],
+    },
+    {
       // Satıcı değerlendirmesi: giriş yapmışsa müşteri id'si eklenir, misafir de olur.
       method: ["POST"],
       matcher: "/store/seller-reviews",

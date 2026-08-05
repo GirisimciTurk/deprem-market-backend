@@ -170,6 +170,11 @@ module.exports = defineConfig({
     review: {
       resolve: "./src/modules/review",
     },
+    wishlist: {
+      // Müşteri favorileri (kalp ikonu). Eskiden storefront'ta localStorage'daydı;
+      // hesaba bağlandı ki kullanıcı cihaz değiştirince favorileri kaybolmasın.
+      resolve: "./src/modules/wishlist",
+    },
     blog: {
       resolve: "./src/modules/blog",
     },
