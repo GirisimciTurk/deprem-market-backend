@@ -6,6 +6,7 @@ import {
 import { STOCK_MOVEMENT_MODULE } from "../modules/stock_movement"
 import type StockMovementModuleService from "../modules/stock_movement/service"
 import { notifyBackInStock } from "./back-in-stock"
+import { maybeAlertLowStock } from "./low-stock-mail"
 
 export type MovementType =
   | "sale"
@@ -156,9 +157,18 @@ export async function setStockedQuantity(
     })
   }
 
-  // "Stoğa geldi" tespiti: stok 0 → pozitife geçtiyse, bu varyanta "haber ver"
-  // diyen abonelere push gönder. Hata olsa bile stok güncelleme akışı kırılmaz.
-  if ((existing?.stocked_quantity ?? 0) <= 0 && target > 0) {
+  // "Stoğa geldi" tespiti: SATILABİLİR stok (stoklanan − rezerve) 0'dan pozitife
+  // geçtiyse, bu varyanta "haber ver" diyen abonelere push gönder. Hata olsa bile
+  // stok güncelleme akışı kırılmaz.
+  //
+  // Ölçüt bilerek satılabilir stok: storefront "tükendi" kararını varyantın
+  // satılabilir miktarına (inventory_quantity) göre veriyor. Yalnız stocked_quantity'e
+  // bakmak, rezerveler yüzünden tükenmiş görünen bir üründe stok artışını
+  // "geçiş değil" sayıp bildirimi atlıyordu.
+  const reserved = existing?.reserved_quantity ?? 0
+  const prevAvailable = existing ? existing.stocked_quantity - reserved : 0
+  const newAvailable = target - reserved
+  if (prevAvailable <= 0 && newAvailable > 0) {
     await notifyBackInStock(container, inventoryItemId)
   }
 
@@ -204,4 +214,76 @@ export async function recordMovement(container: any, input: RecordMovementInput)
       /* logger bile yoksa sessiz geç */
     }
   }
+}
+
+/**
+ * Stoğu mutlak değere ayarlayan TEK giriş noktası: seviyeyi yazar, farkı deftere
+ * kaydeder, "stoğa gelince haber ver" bildirimini (setStockedQuantity içinde) ve
+ * düşük stok uyarısını tetikler.
+ *
+ * NEDEN VAR: Satıcı paneli yolları envanter modülünü DOĞRUDAN çağırıyordu
+ * (inventory.updateInventoryLevels). Sonuç olarak satıcı tükenen bir ürünü stoğa
+ * girdiğinde "haber ver" abonelerine bildirim gitmiyor, stok hareketi de deftere
+ * yazılmıyordu — bildirim yalnızca üç admin ucundan geçen değişikliklerde
+ * çalışıyordu. Stok yazan her yol buradan geçmeli.
+ *
+ * ASLA throw etmez sayılmaz: seviye yazımı başarısız olursa hata yukarı çıkar
+ * (stok yazılamadıysa çağıran bilmeli); defter/uyarı adımları ise sessizdir.
+ */
+export async function applyStockChange(
+  container: any,
+  input: {
+    inventoryItemId: string
+    locationId: string
+    newStocked: number
+    type?: MovementType
+    reason?: string | null
+    actor?: string | null
+    referenceId?: string | null
+  }
+): Promise<{ resulting: number; delta: number }> {
+  const { inventoryItemId, locationId } = input
+
+  const before = await getLevel(container, inventoryItemId, locationId)
+  const prevStocked = before?.stocked_quantity ?? 0
+  const prevAvailable = before ? before.stocked_quantity - before.reserved_quantity : 0
+
+  const resulting = await setStockedQuantity(
+    container,
+    inventoryItemId,
+    locationId,
+    input.newStocked
+  )
+  const delta = resulting - prevStocked
+
+  if (delta !== 0) {
+    const [info, locationName] = await Promise.all([
+      resolveItemInfo(container, inventoryItemId),
+      resolveLocationName(container, locationId),
+    ])
+    await recordMovement(container, {
+      inventory_item_id: inventoryItemId,
+      location_id: locationId,
+      type: input.type ?? "manual",
+      quantity_delta: delta,
+      resulting_quantity: resulting,
+      sku: info.sku,
+      product_title: info.product_title,
+      location_name: locationName,
+      reason: input.reason ?? null,
+      reference_id: input.referenceId ?? null,
+      actor: input.actor ?? null,
+    })
+  }
+
+  // Stok azaldıysa kritik eşik kontrolü (yalnız yeni geçişte uyarır).
+  if (delta < 0) {
+    void maybeAlertLowStock(container, {
+      inventoryItemId,
+      locationId,
+      previousAvailable: prevAvailable,
+    })
+  }
+
+  return { resulting, delta }
 }

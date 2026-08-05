@@ -1,9 +1,10 @@
-import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
+import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import {
   updateProductsWorkflow,
   updateProductVariantsWorkflow,
 } from "@medusajs/medusa/core-flows"
 import { dropMeta } from "../../../lib/metadata"
+import { applyStockChange } from "../../../lib/stock-movement"
 // KDV→native tax senkronu product.updated subscriber'ında (product-tax-sync) merkezi yapılır.
 
 /** Toplu yüklemede SKU eşleşince güncellenecek mevcut ürünün çözülmüş kimlikleri. */
@@ -134,26 +135,21 @@ export async function updateVendorProduct(
   }
 
   // Stok: verilmişse varsayılan lokasyon seviyesini ayarla (yoksa aç).
+  // applyStockChange üzerinden gidiyor — envanter modülü DOĞRUDAN çağrılırsa
+  // "stoğa gelince haber ver" bildirimi gönderilmez ve stok hareketi deftere
+  // yazılmaz (satıcı stok girişleri bu yüzden sessiz kalıyordu).
   if (input.stock != null && target.invItemId) {
     const query = scope.resolve(ContainerRegistrationKeys.QUERY)
-    const inventory = scope.resolve(Modules.INVENTORY)
     const { data: locations } = await query.graph({ entity: "stock_location", fields: ["id"] })
     const locationId = locations?.[0]?.id
     if (locationId) {
-      const qty = Math.max(0, Math.floor(Number(input.stock)))
-      const existing = await inventory.listInventoryLevels({
-        inventory_item_id: target.invItemId,
-        location_id: locationId,
+      await applyStockChange(scope, {
+        inventoryItemId: target.invItemId,
+        locationId,
+        newStocked: Math.max(0, Math.floor(Number(input.stock))),
+        type: "manual",
+        reason: "Satıcı paneli — ürün güncelleme",
       })
-      if (existing.length > 0) {
-        await inventory.updateInventoryLevels([
-          { inventory_item_id: target.invItemId, location_id: locationId, stocked_quantity: qty },
-        ])
-      } else {
-        await inventory.createInventoryLevels([
-          { inventory_item_id: target.invItemId, location_id: locationId, stocked_quantity: qty },
-        ])
-      }
     }
   }
 
