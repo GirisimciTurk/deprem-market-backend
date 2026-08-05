@@ -5,9 +5,40 @@ const DEFAULT_THRESHOLD = process.env.LOW_STOCK_THRESHOLD
   ? Number(process.env.LOW_STOCK_THRESHOLD)
   : 10
 
-/** Uyarı e-postasının gideceği adres: LOW_STOCK_ALERT_EMAIL > SMTP_USER. */
+/** Yönetici uyarı adresi: LOW_STOCK_ALERT_EMAIL > SMTP_USER. */
 function alertRecipient(): string | undefined {
   return process.env.LOW_STOCK_ALERT_EMAIL || process.env.SMTP_USER || undefined
+}
+
+/**
+ * Ürünün satıcısının e-postası (pazaryeri ürünlerinde).
+ *
+ * AYRI ve best-effort: stoğu yöneten satıcının kendisi olduğu için uyarının asıl
+ * muhatabı odur, ama bu çözüm başarısız olursa uyarı hiç gitmemeli DEĞİL —
+ * yönetici bildirimi eskisi gibi çalışmaya devam etmeli. Bu yüzden kendi
+ * try/catch'inde ve hata durumunda null dönüyor.
+ */
+async function resolveSellerEmail(
+  container: any,
+  inventoryItemId: string
+): Promise<{ email: string; name: string | null } | null> {
+  try {
+    const query = container.resolve(ContainerRegistrationKeys.QUERY)
+    const { data } = await query.graph({
+      entity: "inventory_item",
+      fields: [
+        "variants.product.seller.email",
+        "variants.product.seller.name",
+      ],
+      filters: { id: inventoryItemId },
+    })
+    const seller = data?.[0]?.variants?.[0]?.product?.seller
+    const email = typeof seller?.email === "string" ? seller.email.trim() : ""
+    if (!email) return null
+    return { email, name: seller?.name ?? null }
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -23,8 +54,7 @@ export async function maybeAlertLowStock(
   args: { inventoryItemId: string; locationId: string; previousAvailable?: number }
 ): Promise<void> {
   try {
-    const to = alertRecipient()
-    if (!to) return // SMTP yoksa sessiz geç
+    const adminTo = alertRecipient()
 
     const inventory = container.resolve(Modules.INVENTORY)
     const levels = await inventory.listInventoryLevels({
@@ -51,6 +81,14 @@ export async function maybeAlertLowStock(
     if (available > threshold) return
     // Eşik zaten önceden de aşılmışsa (yeni geçiş değilse) tekrar uyarma.
     if (args.previousAvailable != null && args.previousAvailable <= threshold) return
+
+    // Asıl muhatap ürünün SATICISI — stoğu yöneten o. Yönetici de kopyada kalır
+    // (önceki davranış). Satıcı e-postası yoksa (ör. mağazanın kendi ürünü) ya da
+    // çözülemezse yalnız yöneticiye gider.
+    const seller = await resolveSellerEmail(container, args.inventoryItemId)
+    const recipients = [...new Set([seller?.email, adminTo].filter(Boolean))] as string[]
+    if (recipients.length === 0) return // ne satıcı ne SMTP adresi var → sessiz geç
+    const to = recipients.join(", ")
 
     // Lokasyon adı (best-effort).
     let locationName = args.locationId
@@ -85,7 +123,19 @@ export async function maybeAlertLowStock(
           <tr><td style="padding:4px 12px 4px 0;color:#666">Kritik eşik</td>
               <td>${threshold} adet</td></tr>
         </table>
-        <p style="line-height:1.6;color:#444">Lütfen yeniden stok girişi planlayın.</p>
+        <p style="line-height:1.6;color:#444">
+          Lütfen yeniden stok girişi planlayın.${
+            seller
+              ? ` Stoğu satıcı panelinizden güncelleyebilirsiniz; ürün stoğa girdiğinde
+                 “stoğa gelince haber ver” diyen müşterilere bildirim otomatik gönderilir.`
+              : ""
+          }
+        </p>
+        ${
+          seller?.name
+            ? `<p style="margin-top:16px;font-size:12px;color:#888">Satıcı: ${seller.name}</p>`
+            : ""
+        }
       </div>`
 
     const result = await sendMail({ to, subject, html })

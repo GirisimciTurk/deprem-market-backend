@@ -1,5 +1,6 @@
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { applyStockChange, getLevel } from "../lib/stock-movement"
+import { isPushConfigured } from "../lib/web-push"
 import { PUSH_MODULE } from "../modules/push"
 import type PushModuleService from "../modules/push/service"
 import { STOCK_MOVEMENT_MODULE } from "../modules/stock_movement"
@@ -91,12 +92,20 @@ export default async function verifyBackInStock({ container }: { container: any 
       reason: "test: satıcı stok girişi",
     })
 
-    // 4) Beklenen sonuçlar.
+    // 4) Beklenen sonuçlar — VAPID durumuna göre DEĞİŞİR.
+    //    Anahtarlar varsa: bildirim gönderilir, kayıt tüketilir.
+    //    Anahtarlar yoksa: gönderim mümkün değil → kayıt KORUNUR. (Eskiden bu
+    //    durumda da siliniyordu; anahtarlar kurulana kadar biriken tüm müşteri
+    //    talepleri sessizce kayboluyordu.)
     const after = await push.listStockAlerts({ variant_id: target.id }, { take: null })
-    check(
-      after.length === 0,
-      "stok girilince uyarı kaydı tüketildi (bildirim yolu çalıştı)"
-    )
+    if (isPushConfigured()) {
+      check(after.length === 0, "VAPID var → uyarı gönderildi ve kayıt tüketildi")
+    } else {
+      check(
+        after.length > 0,
+        "VAPID yok → kayıt KORUNDU (veri kaybı yok), gönderim atlandı"
+      )
+    }
 
     const movesAfter = await movements.listStockMovements(
       { inventory_item_id: invItemId },
