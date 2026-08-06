@@ -3,6 +3,7 @@ import {
   MedusaResponse,
 } from "@medusajs/framework/http"
 import { z } from "zod"
+import { PUSH_LOCALES } from "../../../../lib/push-i18n"
 import { PUSH_MODULE } from "../../../../modules/push"
 import type PushModuleService from "../../../../modules/push/service"
 
@@ -17,7 +18,10 @@ const schema = z.object({
     p256dh: z.string().min(1),
     auth: z.string().min(1),
   }),
-  locale: z.string().optional(),
+  // Serbest metin DB'ye yazılıyordu (sınırsız uzunluk). Yalnız desteklenen
+  // diller kabul edilir; başka bir değer gelirse alan boş bırakılır ve
+  // gönderimde varsayılan dile düşülür.
+  locale: z.enum(PUSH_LOCALES).optional(),
 })
 
 export async function POST(
