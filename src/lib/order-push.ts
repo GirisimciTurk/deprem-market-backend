@@ -1,38 +1,22 @@
 import { MedusaContainer } from "@medusajs/framework/types"
 import { Modules } from "@medusajs/framework/utils"
-import { sendToCustomer } from "./web-push"
+import { sendToCustomerLocalized } from "./web-push"
 import { errorMessage } from "./errors"
+import { orderPushPayload, type OrderPushStatus } from "./push-i18n"
+
+// Tip push-i18n'e taşındı (metin katalogu orada); çağıranlar bu modülden
+// import etmeye devam edebilsin diye yeniden dışa veriliyor.
+export type { OrderPushStatus }
 
 /**
  * Sipariş durumuna göre giriş yapmış müşteriye web push gönderir.
  *
  * Misafir siparişlerinde (customer_id yok) push atlanır — onlar e-posta alır.
  * Bildirime tıklayınca storefront'taki sipariş detayı açılır.
+ *
+ * Metin, HER CİHAZIN kendi diline göre kurulur (push-i18n): tek bir müşterinin
+ * cihazları farklı dillerde olabilir. Eskiden herkese sabit Türkçe gidiyordu.
  */
-export type OrderPushStatus = "placed" | "shipped" | "delivered" | "canceled"
-
-const COPY: Record<
-  OrderPushStatus,
-  (no: string) => { title: string; body: string }
-> = {
-  placed: (no) => ({
-    title: "Siparişiniz alındı ✅",
-    body: `#${no} numaralı siparişiniz başarıyla oluşturuldu.`,
-  }),
-  shipped: (no) => ({
-    title: "Siparişiniz kargoda 🚚",
-    body: `#${no} numaralı siparişiniz kargoya verildi.`,
-  }),
-  delivered: (no) => ({
-    title: "Siparişiniz teslim edildi 📦",
-    body: `#${no} numaralı siparişiniz teslim edildi. Afiyet olsun!`,
-  }),
-  canceled: (no) => ({
-    title: "Siparişiniz iptal edildi",
-    body: `#${no} numaralı siparişiniz iptal edildi.`,
-  }),
-}
-
 export async function sendOrderPush(
   container: MedusaContainer,
   orderId: string,
@@ -55,21 +39,11 @@ export async function sendOrderPush(
   }
 
   const no = order.display_id?.toString() || orderId.substring(0, 8)
-  const copy = COPY[status](no)
-
-  // Bildirim altı aksiyon butonu: iptal → sipariş listesi, diğerleri → sipariş detayı.
-  const actions =
-    status === "canceled"
-      ? [{ action: "orders", title: "Siparişlerim", url: "/tr/account/orders" }]
-      : [{ action: "view", title: "Siparişi gör" }]
 
   try {
-    const sent = await sendToCustomer(container, customerId, {
-      ...copy,
-      url: `/tr/account/orders/details/${orderId}`,
-      tag: `order-${orderId}`,
-      actions,
-    })
+    const sent = await sendToCustomerLocalized(container, customerId, (locale) =>
+      orderPushPayload(locale, { status, orderNo: no, orderId })
+    )
     if (sent > 0) {
       logger.info(`[OrderPush:${status}] ${sent} cihaza gönderildi (#${no}).`)
     }

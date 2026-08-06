@@ -1,7 +1,8 @@
 import { MedusaContainer } from "@medusajs/framework/types"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { sendMail } from "../lib/mailer"
-import { sendToCustomer } from "../lib/web-push"
+import { sendToCustomerLocalized } from "../lib/web-push"
+import { cartRecoveryPayload } from "../lib/push-i18n"
 import { listEmailOptedInCustomerIds } from "../lib/marketing-consent"
 import { errorMessage } from "../lib/errors"
 
@@ -132,12 +133,17 @@ export default async function recoverAbandonedCartsJob(container: MedusaContaine
 
     if (cart.customer_id) {
       try {
-        const sent = await sendToCustomer(container, cart.customer_id, {
-          title: "Sepetiniz sizi bekliyor 🛒",
-          body: `${cart.item_count} ürün sepetinizde duruyor. Tamamlamak ister misiniz?`,
-          url: "/tr/cart",
-          tag: `cart-recovery-${cart.id}`,
-        })
+        // Push metni cihazın diline göre kurulur (e-posta hâlâ Türkçe:
+        // sepet sorgusu müşteri dilini taşımıyor, ayrı iş).
+        const sent = await sendToCustomerLocalized(
+          container,
+          cart.customer_id,
+          (locale) =>
+            cartRecoveryPayload(locale, {
+              itemCount: Number(cart.item_count),
+              cartId: cart.id,
+            })
+        )
         if (sent > 0) pushed++
       } catch (e) {
         logger.warn(`[recover-carts] push ${cart.id}: ${errorMessage(e)}`)

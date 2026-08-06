@@ -97,15 +97,17 @@ export default async function verifyBackInStock({ container }: { container: any 
     //    Anahtarlar yoksa: gönderim mümkün değil → kayıt KORUNUR. (Eskiden bu
     //    durumda da siliniyordu; anahtarlar kurulana kadar biriken tüm müşteri
     //    talepleri sessizce kayboluyordu.)
+    // NOT: Bu senaryodaki endpoint sahtedir (example.test) ve karşılığında bir
+    // push_subscription kaydı YOKTUR → bildirim hiçbir cihaza ULAŞAMAZ. Artık
+    // kayıt yalnız GERÇEKTEN teslim edildiğinde siliniyor (eskiden ulaşılamayan
+    // kayıtlar da toplu siliniyordu), bu yüzden VAPID olsa da kayıt KORUNUR.
     const after = await push.listStockAlerts({ variant_id: target.id }, { take: null })
-    if (isPushConfigured()) {
-      check(after.length === 0, "VAPID var → uyarı gönderildi ve kayıt tüketildi")
-    } else {
-      check(
-        after.length > 0,
-        "VAPID yok → kayıt KORUNDU (veri kaybı yok), gönderim atlandı"
-      )
-    }
+    check(
+      after.length > 0,
+      isPushConfigured()
+        ? "VAPID var ama cihaza ULAŞILAMADI → kayıt KORUNDU (veri kaybı yok)"
+        : "VAPID yok → kayıt KORUNDU (veri kaybı yok), gönderim atlandı"
+    )
 
     const movesAfter = await movements.listStockMovements(
       { inventory_item_id: invItemId },

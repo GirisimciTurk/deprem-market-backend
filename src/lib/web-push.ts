@@ -3,6 +3,7 @@ import { MedusaContainer } from "@medusajs/framework/types"
 import { PUSH_MODULE } from "../modules/push"
 import type PushModuleService from "../modules/push/service"
 import { errorMessage } from "./errors"
+import { groupByLocale, type PushLocale } from "./push-i18n"
 
 /**
  * Web push gönderim yardımcısı.
@@ -70,6 +71,17 @@ function ensureVapid(): boolean {
 }
 
 /**
+ * Gönderim sonucu. Yalnız toplam sayı yetmiyordu: çağıran (ör. stok uyarısı)
+ * HANGİ kaydın gerçekten teslim edildiğini bilmeden kayıt silerse, ulaşılamayan
+ * kullanıcıların talepleri de "gönderildi" sayılıp kaybolur.
+ */
+export type SendResult = {
+  sent: number
+  /** Bildirimin BAŞARIYLA ulaştığı endpoint'ler. */
+  okEndpoints: Set<string>
+}
+
+/**
  * Verilen aboneliklere bildirimi gönderir. Geçersiz (404/410) abonelikleri
  * siler. Başarılı gönderim sayısını döner.
  */
@@ -77,19 +89,20 @@ export async function sendToSubscriptions(
   container: MedusaContainer,
   subs: StoredSubscription[],
   payload: PushPayload
-): Promise<number> {
+): Promise<SendResult> {
   const logger = container.resolve("logger")
   if (!ensureVapid()) {
     logger.warn("[WebPush] VAPID anahtarları tanımlı değil — push atlandı.")
-    return 0
+    return { sent: 0, okEndpoints: new Set() }
   }
   if (!subs.length) {
-    return 0
+    return { sent: 0, okEndpoints: new Set() }
   }
 
   const pushService = container.resolve<PushModuleService>(PUSH_MODULE)
   const data = JSON.stringify(payload)
   const staleIds: string[] = []
+  const okEndpoints = new Set<string>()
   let sent = 0
 
   await Promise.all(
@@ -104,6 +117,7 @@ export async function sendToSubscriptions(
           { TTL: 60 * 60 * 24 } // 24 saat: cihaz çevrimdışıysa açılınca teslim et
         )
         sent++
+        okEndpoints.add(s.endpoint)
       } catch (err) {
         const status = err?.statusCode
         if (status === 404 || status === 410) {
@@ -118,26 +132,60 @@ export async function sendToSubscriptions(
   )
 
   if (staleIds.length) {
-    await pushService.deletePushSubscriptions(staleIds)
-    logger.info(`[WebPush] ${staleIds.length} geçersiz abonelik temizlendi.`)
+    // Temizlik gönderimi bozmamalı: burada fırlayan hata, BAŞARIYLA gönderilmiş
+    // bildirimlerin sonucunu da (okEndpoints) çağırana ulaşmadan çöpe atardı.
+    try {
+      await pushService.deletePushSubscriptions(staleIds)
+      logger.info(`[WebPush] ${staleIds.length} geçersiz abonelik temizlendi.`)
+    } catch (err) {
+      logger.warn(
+        `[WebPush] Geçersiz abonelikler silinemedi: ${errorMessage(err)}`
+      )
+    }
   }
-  return sent
+  return { sent, okEndpoints }
 }
 
-/** Bir müşterinin tüm cihazlarına gönderir. */
-export async function sendToCustomer(
+/**
+ * Bir müşterinin tüm cihazlarına, HER CİHAZIN KENDİ DİLİNDE gönderir.
+ *
+ * Metin `build(locale)` ile kurulur ve abonelikler `locale` alanına göre
+ * gruplanır. Sabit metinli `sendToCustomer` bunun üzerine kuruludur; tek bir
+ * müşterinin cihazları farklı dillerde olabilir (telefon TR, iş bilgisayarı EN).
+ */
+export async function sendToCustomerLocalized(
   container: MedusaContainer,
   customerId: string,
-  payload: PushPayload
+  build: (locale: PushLocale) => PushPayload
 ): Promise<number> {
   if (!customerId) {
     return 0
   }
+  // VAPID kontrolü grup döngüsünün İÇİNDE kalırsa aynı uyarı her dil grubu için
+  // tekrar loglanır ve abonelikler boşuna sorgulanır.
+  if (!isPushConfigured()) {
+    container
+      .resolve<{ warn: (m: string) => void }>("logger")
+      .warn("[WebPush] VAPID anahtarları tanımlı değil — push atlandı.")
+    return 0
+  }
+
   const pushService = container.resolve<PushModuleService>(PUSH_MODULE)
-  const subs = await pushService.listPushSubscriptions({
+  const subs = (await pushService.listPushSubscriptions({
     customer_id: customerId,
-  })
-  return sendToSubscriptions(container, subs as StoredSubscription[], payload)
+  })) as StoredSubscription[]
+  if (!subs.length) {
+    return 0
+  }
+
+  // Gruplar birbirini beklemesin: dil ayrımından önce tüm cihazlar tek
+  // Promise.all ile paralel gidiyordu, o davranış korunuyor.
+  const results = await Promise.all(
+    [...groupByLocale(subs as (StoredSubscription & { locale?: string | null })[])].map(
+      ([loc, group]) => sendToSubscriptions(container, group, build(loc))
+    )
+  )
+  return results.reduce((n, r) => n + r.sent, 0)
 }
 
 /**
@@ -153,6 +201,6 @@ export async function broadcast(
   const subs = (await pushService.listPushSubscriptions(filter, {
     take: null,
   })) as StoredSubscription[]
-  const sent = await sendToSubscriptions(container, subs, payload)
+  const { sent } = await sendToSubscriptions(container, subs, payload)
   return { total: subs.length, sent }
 }
